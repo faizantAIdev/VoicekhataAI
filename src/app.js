@@ -6,6 +6,7 @@ const customerRoutes = require('./routes/customerRoutes');
 const transactionRoutes = require('./routes/transactionRoutes');
 const dashboardRoutes = require('./routes/dashboardRoutes');
 const authRoutes = require('./routes/authRoutes');
+const voiceRoutes = require('./routes/voiceRoutes');
 const app = express();
 
 // ==========================================
@@ -38,6 +39,7 @@ app.use('/api/supplier', supplierRoutes);
 app.use('/api/transactions', transactionRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/auth', authRoutes);
+app.use('/api/voice', voiceRoutes);
 // ==========================================
 // 404 ROUTE
 // ==========================================

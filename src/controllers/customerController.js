@@ -46,8 +46,32 @@ const getCustomers = async (req, res) => {
     });
   }
 };
-
-
+    // {
+    //   "id": "658f08d1-55e1-454b-9887-b6a7521551c3",
+    //   "user_id": "5ef37967-0ad2-4a27-b149-babf1564c46e",
+    //   "name": "Harpal Bhai Rojiya",
+    //   "mobile": "6464646466",
+    //   "created_at": "2026-09-08T11:24:28.795928+00:00"
+    // },
+// {
+//   "success": true,
+//   "customers": [
+//     {
+//       "id": "658f08d1-55e1-454b-9887-b6a7521551c3",
+//       "user_id": "5ef37967-0ad2-4a27-b149-babf1564c46e",
+//       "name": "Harpal Bhai Rojiya",
+//       "mobile": "6464646466",
+//       "created_at": "2026-09-08T11:24:28.795928+00:00"
+//     },
+//     {
+//       "id": "fa669a68-75ce-4c1a-a8d0-4fdfeebebc31",
+//       "user_id": "5ef37967-0ad2-4a27-b149-babf1564c46e",
+//       "name": "Mendu Bhai Rojiya",
+//       "mobile": "9456976950",
+//       "created_at": "2026-09-08T11:16:14.142984+00:00"
+//     }
+//   ]
+// }
 // ======================================
 // CREATE CUSTOMER
 // ======================================
