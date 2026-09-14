@@ -72,17 +72,26 @@ router.post('/parse', async (req, res) => {
       });
     }
 
+
+    // Customer voice flow supports only:
+    // credit_given
+    // payment_received
+
     if (
       !parsed.intent ||
-      !['receivable', 'payable'].includes(parsed.intent)
+      ![
+        'credit_given',
+        'payment_received',
+      ].includes(parsed.intent)
     ) {
       return res.status(400).json({
         success: false,
         reason: 'INVALID_INTENT',
         message:
-          'Could not determine whether the transaction is receivable or payable',
+          'Could not determine whether this is credit given or payment received',
       });
     }
+
 
     if (!parsed.person_name || !parsed.person_name.trim()) {
       return res.status(400).json({
@@ -91,6 +100,7 @@ router.post('/parse', async (req, res) => {
         message: 'Could not understand customer name',
       });
     }
+
 
     if (!parsed.amount || Number(parsed.amount) <= 0) {
       return res.status(400).json({
@@ -259,16 +269,15 @@ router.post('/parse', async (req, res) => {
 // =====================================================
 // POST /api/voice/confirm
 //
-// This endpoint runs ONLY after user confirmation.
+// Runs ONLY after user confirmation.
 //
-// Existing customer:
-//   -> use customer_id
-//   -> create transaction
+// Customer intents:
 //
-// New customer:
-//   -> create customer
-//   -> get customer_id
-//   -> create transaction
+// credit_given
+//     -> database transaction type = credit
+//
+// payment_received
+//     -> database transaction type = payment
 //
 // =====================================================
 
@@ -297,6 +306,7 @@ router.post('/confirm', async (req, res) => {
       });
     }
 
+
     if (!intent) {
       return res.status(400).json({
         success: false,
@@ -305,14 +315,21 @@ router.post('/confirm', async (req, res) => {
       });
     }
 
-    if (!['receivable', 'payable'].includes(intent)) {
+
+    if (
+      ![
+        'credit_given',
+        'payment_received',
+      ].includes(intent)
+    ) {
       return res.status(400).json({
         success: false,
         reason: 'INVALID_INTENT',
         message:
-          'Invalid intent. Use receivable or payable',
+          'Invalid intent. Use credit_given or payment_received',
       });
     }
+
 
     if (!amount || Number(amount) <= 0) {
       return res.status(400).json({
@@ -324,15 +341,17 @@ router.post('/confirm', async (req, res) => {
 
 
     // ==========================================
-    // 2. CONVERT VOICE INTENT
-    // TO EXISTING TRANSACTION TYPE
+    // 2. CONVERT INTENT
+    // TO EXISTING DATABASE TRANSACTION TYPE
     // ==========================================
 
     let transactionType;
 
-    if (intent === 'receivable') {
+    if (intent === 'credit_given') {
       transactionType = 'credit';
-    } else if (intent === 'payable') {
+    }
+
+    if (intent === 'payment_received') {
       transactionType = 'payment';
     }
 
@@ -375,6 +394,7 @@ router.post('/confirm', async (req, res) => {
     // ==========================================
 
     if (!finalCustomerId) {
+
       if (!customer_name || !customer_name.trim()) {
         return res.status(400).json({
           success: false,
@@ -396,35 +416,43 @@ router.post('/confirm', async (req, res) => {
 
 
       // ----------------------------------------
-      // EXACT / STRONG MATCH FOUND
+      // MATCHED CUSTOMER FOUND
       // ----------------------------------------
 
       if (matchResult.status === 'matched') {
-        finalCustomerId = matchResult.customer.id;
 
-        finalCustomer = matchResult.customer;
+        finalCustomerId =
+          matchResult.customer.id;
+
+        finalCustomer =
+          matchResult.customer;
       }
 
 
       // ----------------------------------------
-      // CUSTOMER DOES NOT EXIST
+      // CUSTOMER REALLY DOES NOT EXIST
       // ----------------------------------------
 
       else if (matchResult.status === 'not_found') {
-        const { data: newCustomer, error: customerError } =
-          await supabase
-            .from('customers')
-            .insert([
-              {
-                user_id,
-                name: customer_name.trim(),
-                mobile: mobile || null,
-              },
-            ])
-            .select('id, user_id, name, mobile')
-            .single();
+
+        const {
+          data: newCustomer,
+          error: customerError,
+        } = await supabase
+          .from('customers')
+          .insert([
+            {
+              user_id,
+              name: customer_name.trim(),
+              mobile: mobile || null,
+            },
+          ])
+          .select('id, user_id, name, mobile')
+          .single();
+
 
         if (customerError) {
+
           console.error(
             'CREATE VOICE CUSTOMER ERROR:',
             customerError
@@ -437,8 +465,12 @@ router.post('/confirm', async (req, res) => {
           });
         }
 
-        finalCustomerId = newCustomer.id;
-        finalCustomer = newCustomer;
+
+        finalCustomerId =
+          newCustomer.id;
+
+        finalCustomer =
+          newCustomer;
       }
 
 
@@ -447,8 +479,11 @@ router.post('/confirm', async (req, res) => {
       // ----------------------------------------
 
       else {
+
         return res.status(409).json({
+
           success: false,
+
           reason: matchResult.status,
 
           message:
@@ -456,9 +491,11 @@ router.post('/confirm', async (req, res) => {
 
           matches:
             matchResult.customers ||
-            (matchResult.customer
-              ? [matchResult.customer]
-              : []),
+            (
+              matchResult.customer
+                ? [matchResult.customer]
+                : []
+            ),
         });
       }
     }
@@ -468,24 +505,31 @@ router.post('/confirm', async (req, res) => {
     // 6. CREATE TRANSACTION
     // ==========================================
 
-    const { data: transaction, error: transactionError } =
-      await supabase
-        .from('transactions')
-        .insert([
-          {
-            user_id: user_id,
-            customer_id: finalCustomerId,
-            supplier_id: null,
-            type: transactionType,
-            amount: Number(amount),
-            description:
-              note && note.trim()
-                ? note.trim()
-                : 'Voice entry',
-          },
-        ])
-        .select()
-        .single();
+    const {
+      data: transaction,
+      error: transactionError,
+    } = await supabase
+      .from('transactions')
+      .insert([
+        {
+          user_id: user_id,
+
+          customer_id: finalCustomerId,
+
+          supplier_id: null,
+
+          type: transactionType,
+
+          amount: Number(amount),
+
+          description:
+            note && note.trim()
+              ? note.trim()
+              : 'Voice entry',
+        },
+      ])
+      .select()
+      .single();
 
 
     // ==========================================
@@ -493,6 +537,7 @@ router.post('/confirm', async (req, res) => {
     // ==========================================
 
     if (transactionError) {
+
       console.error(
         'CREATE VOICE TRANSACTION ERROR:',
         transactionError
@@ -511,6 +556,7 @@ router.post('/confirm', async (req, res) => {
     // ==========================================
 
     return res.status(201).json({
+
       success: true,
 
       message:
@@ -518,33 +564,53 @@ router.post('/confirm', async (req, res) => {
 
       customer: {
         id: finalCustomer.id,
+
         name: finalCustomer.name,
+
         mobile: finalCustomer.mobile,
+
         is_new: !customer_id,
       },
 
       transaction: {
+
         id: transaction.id,
+
         user_id: transaction.user_id,
+
         customer_id: transaction.customer_id,
+
         type: transaction.type,
+
         amount: transaction.amount,
+
         description: transaction.description,
+
         created_at: transaction.created_at,
       },
     });
 
 
   } catch (error) {
+
     console.error('===================================');
-    console.error('VOICE CONFIRM ERROR');
+
+    console.error(
+      'VOICE CONFIRM ERROR'
+    );
+
     console.error(error);
+
     console.error('===================================');
+
 
     return res.status(500).json({
       success: false,
+
       reason: 'VOICE_CONFIRM_SERVER_ERROR',
-      message: 'Failed to confirm voice transaction',
+
+      message:
+        'Failed to confirm voice transaction',
     });
   }
 });
