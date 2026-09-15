@@ -104,11 +104,16 @@ const verifyOtp = async (req, res) => {
     // OTP verified
     otpStore.delete(mobile);
 
-    // Check existing user
+    // ======================================
+    // CHECK EXISTING USER
+    // ======================================
+
     const { data: existingUser, error: userError } =
       await supabase
         .from('users')
-        .select('id, name, mobile, business_name, created_at')
+        .select(
+          'id, name, mobile, business_name, created_at'
+        )
         .eq('mobile', mobile)
         .maybeSingle();
 
@@ -121,7 +126,10 @@ const verifyOtp = async (req, res) => {
       });
     }
 
-    // Existing user
+    // ======================================
+    // EXISTING USER
+    // ======================================
+
     if (existingUser) {
       return res.json({
         success: true,
@@ -131,7 +139,10 @@ const verifyOtp = async (req, res) => {
       });
     }
 
-    // New user
+    // ======================================
+    // NEW USER
+    // ======================================
+
     const { data: newUser, error: createError } =
       await supabase
         .from('users')
@@ -141,7 +152,9 @@ const verifyOtp = async (req, res) => {
             name: 'User',
           },
         ])
-        .select('id, name, mobile, business_name, created_at')
+        .select(
+          'id, name, mobile, business_name, created_at'
+        )
         .single();
 
     if (createError) {
@@ -153,7 +166,7 @@ const verifyOtp = async (req, res) => {
       });
     }
 
-    res.status(201).json({
+    return res.status(201).json({
       success: true,
       message: 'Account created successfully',
       isNewUser: true,
@@ -171,7 +184,68 @@ const verifyOtp = async (req, res) => {
 };
 
 
+// ======================================
+// LOGOUT
+// ======================================
+
+const logout = async (req, res) => {
+  try {
+    const { user_id } = req.body;
+
+    // user_id required
+    if (!user_id) {
+      return res.status(400).json({
+        success: false,
+        message: 'User ID is required',
+      });
+    }
+
+    // Check user exists
+    const { data: user, error: userError } =
+      await supabase
+        .from('users')
+        .select('id')
+        .eq('id', user_id)
+        .maybeSingle();
+
+    if (userError) {
+      console.error('Logout User Check Error:', userError);
+
+      return res.status(500).json({
+        success: false,
+        message: userError.message,
+      });
+    }
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found',
+      });
+    }
+
+    // ======================================
+    // LOGOUT SUCCESS
+    // ======================================
+
+    return res.json({
+      success: true,
+      message: 'Logout successful',
+    });
+
+  } catch (error) {
+    console.error('Logout Error:', error);
+
+    return res.status(500).json({
+      success: false,
+      message: 'Server error',
+    });
+  }
+};
+
+
 module.exports = {
   sendOtp,
   verifyOtp,
+  logout,
 };
