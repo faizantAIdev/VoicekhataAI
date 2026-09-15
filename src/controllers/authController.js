@@ -242,10 +242,125 @@ const logout = async (req, res) => {
     });
   }
 };
+const setupBusiness = async (req, res) => {
+  try {
+    const {
+      user_id,
+      business_name,
+      business_type,
+      owner_name,
+      city,
+    } = req.body;
 
+    if (!user_id) {
+      return res.status(400).json({
+        success: false,
+        message: 'User ID is required',
+      });
+    }
+
+    if (!business_name || !business_name.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Business name is required',
+      });
+    }
+
+    if (!business_type || !business_type.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Business type is required',
+      });
+    }
+
+    if (!owner_name || !owner_name.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Owner name is required',
+      });
+    }
+
+    // Check user
+    const {
+      data: existingUser,
+      error: userError,
+    } = await supabase
+      .from('users')
+      .select('id')
+      .eq('id', user_id)
+      .maybeSingle();
+
+    if (userError) {
+      console.error(
+        'Business Setup User Check Error:',
+        userError
+      );
+
+      return res.status(500).json({
+        success: false,
+        message: userError.message,
+      });
+    }
+
+    if (!existingUser) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found',
+      });
+    }
+
+    // Update business details
+    const {
+      data: updatedUser,
+      error: updateError,
+    } = await supabase
+      .from('users')
+      .update({
+        name: owner_name.trim(),
+        business_name: business_name.trim(),
+        business_type: business_type.trim(),
+        city: city ? city.trim() : null,
+      })
+      .eq('id', user_id)
+      .select(
+        'id, name, mobile, business_name, business_type, city, created_at'
+      )
+      .single();
+
+    if (updateError) {
+      console.error(
+        'Business Setup Update Error:',
+        updateError
+      );
+
+      return res.status(500).json({
+        success: false,
+        message: updateError.message,
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: 'Business setup completed successfully',
+      user: updatedUser,
+    });
+
+  } catch (error) {
+    console.error(
+      'Business Setup Error:',
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message: 'Server error',
+    });
+  }
+};
 
 module.exports = {
   sendOtp,
   verifyOtp,
   logout,
+  setupBusiness
 };
