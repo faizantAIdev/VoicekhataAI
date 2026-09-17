@@ -1,7 +1,16 @@
 const express = require('express');
 
-const { parseVoiceText } = require('./services/voiceParser');
-const { findCustomerByName } = require('./services/customerMatcher');
+const {
+  parseVoiceText,
+} = require('./services/voiceParser');
+
+const {
+  findCustomerByName,
+} = require('./services/customerMatcher');
+
+const {
+  findSupplierByName,
+} = require('./services/supplierMatcher');
 
 const supabase = require('./../config/supabase');
 
@@ -10,126 +19,521 @@ const router = express.Router();
 
 // =====================================================
 // POST /api/voice/parse
-//
-// AI parses voice text
-// Then smart-matches the customer
-//
-// IMPORTANT:
-// No customer is created here.
-// No transaction is created here.
-//
 // =====================================================
 
 router.post('/parse', async (req, res) => {
+
   try {
-    const { text, user_id } = req.body;
 
-    // ==========================================
-    // 1. VALIDATE INPUT
-    // ==========================================
-
-    if (!text || typeof text !== 'string' || !text.trim()) {
-      return res.status(400).json({
-        success: false,
-        reason: 'VOICE_TEXT_MISSING',
-        message: 'Voice text is required',
-      });
-    }
-
-    if (!user_id) {
-      return res.status(400).json({
-        success: false,
-        reason: 'USER_ID_MISSING',
-        message: 'user_id is required',
-      });
-    }
-
-    console.log('-----------------------------------');
-    console.log('VOICE PARSE REQUEST');
-    console.log('USER ID:', user_id);
-    console.log('VOICE TEXT:', text);
-    console.log('-----------------------------------');
+    const {
+      text,
+      user_id,
+    } = req.body;
 
 
-    // ==========================================
-    // 2. AI PARSE
-    // ==========================================
-
-    const parsed = await parseVoiceText(text.trim());
-
-    console.log('AI PARSED RESULT:', parsed);
-
-
-    // ==========================================
-    // 3. VALIDATE AI RESULT
-    // ==========================================
-
-    if (!parsed) {
-      return res.status(400).json({
-        success: false,
-        reason: 'AI_PARSE_FAILED',
-        message: 'Could not understand the voice input',
-      });
-    }
-
-
-    // Customer voice flow supports only:
-    // credit_given
-    // payment_received
+    // =================================================
+    // VALIDATION
+    // =================================================
 
     if (
-      !parsed.intent ||
-      ![
-        'credit_given',
-        'payment_received',
-      ].includes(parsed.intent)
+      !text ||
+      typeof text !== 'string' ||
+      !text.trim()
     ) {
+
       return res.status(400).json({
+
         success: false,
-        reason: 'INVALID_INTENT',
+
+        reason: 'VOICE_TEXT_MISSING',
+
         message:
-          'Could not determine whether this is credit given or payment received',
+          'Voice text is required',
+
       });
     }
 
 
-    if (!parsed.person_name || !parsed.person_name.trim()) {
+    if (!user_id) {
+
       return res.status(400).json({
+
         success: false,
-        reason: 'PERSON_NAME_MISSING',
-        message: 'Could not understand customer name',
+
+        reason: 'USER_ID_MISSING',
+
+        message:
+          'user_id is required',
+
       });
     }
 
 
-    if (!parsed.amount || Number(parsed.amount) <= 0) {
-      return res.status(400).json({
-        success: false,
-        reason: 'AMOUNT_MISSING',
-        message: 'Could not understand transaction amount',
-      });
-    }
-
-
-    // ==========================================
-    // 4. SMART CUSTOMER MATCHING
-    // ==========================================
-
-    const matchResult = await findCustomerByName(
-      user_id,
-      parsed.person_name
+    console.log(
+      '-----------------------------------'
     );
 
-    console.log('CUSTOMER MATCH RESULT:', matchResult);
+    console.log(
+      'VOICE PARSE REQUEST'
+    );
+
+    console.log(
+      'USER ID:',
+      user_id
+    );
+
+    console.log(
+      'VOICE TEXT:',
+      text
+    );
+
+    console.log(
+      '-----------------------------------'
+    );
 
 
-    // ==========================================
-    // 5. MULTIPLE CUSTOMERS FOUND
-    // ==========================================
+    // =================================================
+    // AI PARSE
+    // =================================================
 
-    if (matchResult.status === 'multiple_matches') {
+    const parsed =
+      await parseVoiceText(
+        text.trim()
+      );
+
+
+    console.log(
+      'AI PARSED RESULT:',
+      parsed
+    );
+
+
+    // =================================================
+    // VALIDATE ACCOUNT TYPE
+    // =================================================
+
+    if (
+      ![
+        'customer',
+        'supplier',
+      ].includes(
+        parsed.account_type
+      )
+    ) {
+
+      return res.status(400).json({
+
+        success: false,
+
+        reason: 'INVALID_ACCOUNT_TYPE',
+
+        message:
+          'Could not determine customer or supplier',
+
+      });
+    }
+
+
+    // =================================================
+    // VALIDATE INTENT
+    // =================================================
+
+    const validCustomerIntents = [
+      'credit_given',
+      'payment_received',
+    ];
+
+
+    const validSupplierIntents = [
+      'purchase_from_supplier',
+      'payment_to_supplier',
+    ];
+
+
+    if (
+      parsed.account_type ===
+      'customer'
+    ) {
+
+      if (
+        !validCustomerIntents.includes(
+          parsed.intent
+        )
+      ) {
+
+        return res.status(400).json({
+
+          success: false,
+
+          reason: 'INVALID_INTENT',
+
+          message:
+            'Could not understand customer transaction',
+
+        });
+      }
+    }
+
+
+    if (
+      parsed.account_type ===
+      'supplier'
+    ) {
+
+      if (
+        !validSupplierIntents.includes(
+          parsed.intent
+        )
+      ) {
+
+        return res.status(400).json({
+
+          success: false,
+
+          reason: 'INVALID_INTENT',
+
+          message:
+            'Could not understand supplier transaction',
+
+        });
+      }
+    }
+
+
+    // =================================================
+    // PERSON NAME
+    // =================================================
+
+    if (
+      !parsed.person_name ||
+      !parsed.person_name.trim()
+    ) {
+
+      return res.status(400).json({
+
+        success: false,
+
+        reason: 'PERSON_NAME_MISSING',
+
+        message:
+          `Could not understand ${
+            parsed.account_type
+          } name`,
+
+      });
+    }
+
+
+    // =================================================
+    // AMOUNT
+    // =================================================
+
+    if (
+      !parsed.amount ||
+      Number(parsed.amount) <= 0
+    ) {
+
+      return res.status(400).json({
+
+        success: false,
+
+        reason: 'AMOUNT_MISSING',
+
+        message:
+          'Could not understand transaction amount',
+
+      });
+    }
+
+
+    // =================================================
+    // SUPPLIER FLOW
+    // =================================================
+
+    if (
+      parsed.account_type ===
+      'supplier'
+    ) {
+
+      const matchResult =
+        await findSupplierByName(
+          user_id,
+          parsed.person_name
+        );
+
+
+      console.log(
+        'SUPPLIER MATCH RESULT:',
+        matchResult
+      );
+
+
+      // ===============================================
+      // MULTIPLE SUPPLIERS
+      // ===============================================
+
+      if (
+        matchResult.status ===
+        'multiple_matches'
+      ) {
+
+        return res.json({
+
+          success: true,
+
+          account_type: 'supplier',
+
+          supplier_found: false,
+
+          reason: 'MULTIPLE_MATCHES',
+
+          message:
+            'Multiple suppliers matched. Please select the correct supplier.',
+
+          suppliers:
+            matchResult.suppliers,
+
+          transaction: {
+
+            account_type:
+              'supplier',
+
+            intent:
+              parsed.intent,
+
+            person_name:
+              parsed.person_name,
+
+            amount:
+              Number(parsed.amount),
+
+            note:
+              parsed.note || '',
+
+            date:
+              parsed.date || 'today',
+
+          },
+
+        });
+      }
+
+
+      // ===============================================
+      // POSSIBLE SUPPLIER
+      // ===============================================
+
+      if (
+        matchResult.status ===
+        'possible_match'
+      ) {
+
+        return res.json({
+
+          success: true,
+
+          account_type: 'supplier',
+
+          supplier_found: false,
+
+          reason: 'POSSIBLE_MATCH',
+
+          message:
+            'A similar supplier was found. Please confirm.',
+
+          suggested_supplier: {
+
+            id:
+              matchResult.supplier.id,
+
+            name:
+              matchResult.supplier.name,
+
+            mobile:
+              matchResult.supplier.mobile,
+
+            confidence:
+              matchResult.confidence,
+
+          },
+
+          transaction: {
+
+            account_type:
+              'supplier',
+
+            intent:
+              parsed.intent,
+
+            person_name:
+              parsed.person_name,
+
+            amount:
+              Number(parsed.amount),
+
+            note:
+              parsed.note || '',
+
+            date:
+              parsed.date || 'today',
+
+          },
+
+        });
+      }
+
+
+      // ===============================================
+      // SUPPLIER FOUND
+      // ===============================================
+
+      if (
+        matchResult.status ===
+        'matched'
+      ) {
+
+        return res.json({
+
+          success: true,
+
+          account_type: 'supplier',
+
+          supplier_found: true,
+
+          reason: 'SUPPLIER_FOUND',
+
+          message:
+            'Supplier found. Ready for confirmation.',
+
+          supplier: {
+
+            id:
+              matchResult.supplier.id,
+
+            name:
+              matchResult.supplier.name,
+
+            mobile:
+              matchResult.supplier.mobile,
+
+            is_new: false,
+
+          },
+
+          transaction: {
+
+            account_type:
+              'supplier',
+
+            intent:
+              parsed.intent,
+
+            person_name:
+              parsed.person_name,
+
+            amount:
+              Number(parsed.amount),
+
+            note:
+              parsed.note || '',
+
+            date:
+              parsed.date || 'today',
+
+          },
+
+        });
+      }
+
+
+      // ===============================================
+      // SUPPLIER NOT FOUND
+      // ===============================================
+
       return res.json({
+
         success: true,
+
+        account_type: 'supplier',
+
+        supplier_found: false,
+
+        reason: 'PERSON_NOT_FOUND',
+
+        message:
+          `Supplier "${parsed.person_name}" was not found. A new supplier can be created after confirmation.`,
+
+        supplier: {
+
+          id: null,
+
+          name:
+            parsed.person_name.trim(),
+
+          mobile: null,
+
+          is_new: true,
+
+        },
+
+        transaction: {
+
+          account_type:
+            'supplier',
+
+          intent:
+            parsed.intent,
+
+          person_name:
+            parsed.person_name,
+
+          amount:
+            Number(parsed.amount),
+
+          note:
+            parsed.note || '',
+
+          date:
+            parsed.date || 'today',
+
+        },
+
+      });
+
+    }
+
+
+    // =================================================
+    // CUSTOMER FLOW
+    // =================================================
+
+    const matchResult =
+      await findCustomerByName(
+        user_id,
+        parsed.person_name
+      );
+
+
+    console.log(
+      'CUSTOMER MATCH RESULT:',
+      matchResult
+    );
+
+
+    // =================================================
+    // MULTIPLE CUSTOMERS
+    // =================================================
+
+    if (
+      matchResult.status ===
+      'multiple_matches'
+    ) {
+
+      return res.json({
+
+        success: true,
+
+        account_type: 'customer',
 
         customer_found: false,
 
@@ -138,26 +542,49 @@ router.post('/parse', async (req, res) => {
         message:
           'Multiple customers matched. Please select the correct customer.',
 
-        customers: matchResult.customers,
+        customers:
+          matchResult.customers,
 
         transaction: {
-          intent: parsed.intent,
-          person_name: parsed.person_name,
-          amount: Number(parsed.amount),
-          note: parsed.note || '',
-          date: parsed.date || 'today',
+
+          account_type:
+            'customer',
+
+          intent:
+            parsed.intent,
+
+          person_name:
+            parsed.person_name,
+
+          amount:
+            Number(parsed.amount),
+
+          note:
+            parsed.note || '',
+
+          date:
+            parsed.date || 'today',
+
         },
+
       });
     }
 
 
-    // ==========================================
-    // 6. POSSIBLE CUSTOMER MATCH
-    // ==========================================
+    // =================================================
+    // POSSIBLE CUSTOMER
+    // =================================================
 
-    if (matchResult.status === 'possible_match') {
+    if (
+      matchResult.status ===
+      'possible_match'
+    ) {
+
       return res.json({
+
         success: true,
+
+        account_type: 'customer',
 
         customer_found: false,
 
@@ -167,30 +594,61 @@ router.post('/parse', async (req, res) => {
           'A similar customer was found. Please confirm.',
 
         suggested_customer: {
-          id: matchResult.customer.id,
-          name: matchResult.customer.name,
-          mobile: matchResult.customer.mobile,
-          confidence: matchResult.confidence,
+
+          id:
+            matchResult.customer.id,
+
+          name:
+            matchResult.customer.name,
+
+          mobile:
+            matchResult.customer.mobile,
+
+          confidence:
+            matchResult.confidence,
+
         },
 
         transaction: {
-          intent: parsed.intent,
-          person_name: parsed.person_name,
-          amount: Number(parsed.amount),
-          note: parsed.note || '',
-          date: parsed.date || 'today',
+
+          account_type:
+            'customer',
+
+          intent:
+            parsed.intent,
+
+          person_name:
+            parsed.person_name,
+
+          amount:
+            Number(parsed.amount),
+
+          note:
+            parsed.note || '',
+
+          date:
+            parsed.date || 'today',
+
         },
+
       });
     }
 
 
-    // ==========================================
-    // 7. CUSTOMER FOUND
-    // ==========================================
+    // =================================================
+    // CUSTOMER FOUND
+    // =================================================
 
-    if (matchResult.status === 'matched') {
+    if (
+      matchResult.status ===
+      'matched'
+    ) {
+
       return res.json({
+
         success: true,
+
+        account_type: 'customer',
 
         customer_found: true,
 
@@ -200,32 +658,55 @@ router.post('/parse', async (req, res) => {
           'Customer found. Ready for confirmation.',
 
         customer: {
-          id: matchResult.customer.id,
-          name: matchResult.customer.name,
-          mobile: matchResult.customer.mobile,
+
+          id:
+            matchResult.customer.id,
+
+          name:
+            matchResult.customer.name,
+
+          mobile:
+            matchResult.customer.mobile,
+
           is_new: false,
+
         },
 
         transaction: {
-          intent: parsed.intent,
-          person_name: parsed.person_name,
-          amount: Number(parsed.amount),
-          note: parsed.note || '',
-          date: parsed.date || 'today',
+
+          account_type:
+            'customer',
+
+          intent:
+            parsed.intent,
+
+          person_name:
+            parsed.person_name,
+
+          amount:
+            Number(parsed.amount),
+
+          note:
+            parsed.note || '',
+
+          date:
+            parsed.date || 'today',
+
         },
+
       });
     }
 
 
-    // ==========================================
-    // 8. CUSTOMER NOT FOUND
-    //
-    // Do NOT create customer here.
-    // Wait for /confirm.
-    // ==========================================
+    // =================================================
+    // CUSTOMER NOT FOUND
+    // =================================================
 
     return res.json({
+
       success: true,
+
+      account_type: 'customer',
 
       customer_found: false,
 
@@ -235,365 +716,940 @@ router.post('/parse', async (req, res) => {
         `Customer "${parsed.person_name}" was not found. A new customer can be created after confirmation.`,
 
       customer: {
+
         id: null,
-        name: parsed.person_name.trim(),
+
+        name:
+          parsed.person_name.trim(),
+
         mobile: null,
+
         is_new: true,
+
       },
 
       transaction: {
-        intent: parsed.intent,
-        person_name: parsed.person_name,
-        amount: Number(parsed.amount),
-        note: parsed.note || '',
-        date: parsed.date || 'today',
+
+        account_type:
+          'customer',
+
+        intent:
+          parsed.intent,
+
+        person_name:
+          parsed.person_name,
+
+        amount:
+          Number(parsed.amount),
+
+        note:
+          parsed.note || '',
+
+        date:
+          parsed.date || 'today',
+
       },
+
     });
 
 
   } catch (error) {
-    console.error('===================================');
-    console.error('VOICE PARSE ERROR');
+
+    console.error(
+      '==================================='
+    );
+
+    console.error(
+      'VOICE PARSE ERROR'
+    );
+
     console.error(error);
-    console.error('===================================');
+
+    console.error(
+      '==================================='
+    );
+
 
     return res.status(500).json({
+
       success: false,
-      reason: 'VOICE_PARSE_SERVER_ERROR',
-      message: 'Failed to process voice input',
+
+      reason:
+        'VOICE_PARSE_SERVER_ERROR',
+
+      message:
+        error.message ||
+        'Failed to process voice input',
+
     });
+
   }
+
 });
 
 
 // =====================================================
 // POST /api/voice/confirm
-//
-// Runs ONLY after user confirmation.
-//
-// Customer intents:
-//
-// credit_given
-//     -> database transaction type = credit
-//
-// payment_received
-//     -> database transaction type = payment
-//
 // =====================================================
 
 router.post('/confirm', async (req, res) => {
+
   try {
+
     const {
       user_id,
+
+      account_type,
+
       customer_id,
       customer_name,
+
+      supplier_id,
+      supplier_name,
+
       intent,
+
       amount,
+
       note,
+
       mobile,
+
     } = req.body;
 
 
-    // ==========================================
-    // 1. VALIDATION
-    // ==========================================
+    // =================================================
+    // VALIDATE USER
+    // =================================================
 
     if (!user_id) {
+
       return res.status(400).json({
+
         success: false,
+
         reason: 'USER_ID_MISSING',
-        message: 'user_id is required',
+
+        message:
+          'user_id is required',
+
       });
     }
 
 
-    if (!intent) {
-      return res.status(400).json({
-        success: false,
-        reason: 'INTENT_MISSING',
-        message: 'intent is required',
-      });
-    }
-
+    // =================================================
+    // VALIDATE ACCOUNT TYPE
+    // =================================================
 
     if (
       ![
-        'credit_given',
-        'payment_received',
-      ].includes(intent)
+        'customer',
+        'supplier',
+      ].includes(account_type)
     ) {
+
       return res.status(400).json({
+
         success: false,
-        reason: 'INVALID_INTENT',
+
+        reason: 'INVALID_ACCOUNT_TYPE',
+
         message:
-          'Invalid intent. Use credit_given or payment_received',
+          'account_type must be customer or supplier',
+
       });
     }
 
 
-    if (!amount || Number(amount) <= 0) {
+    // =================================================
+    // VALIDATE INTENT
+    // =================================================
+
+    const validIntents =
+      account_type === 'customer'
+        ? [
+            'credit_given',
+            'payment_received',
+          ]
+        : [
+            'purchase_from_supplier',
+            'payment_to_supplier',
+          ];
+
+
+    if (
+      !validIntents.includes(intent)
+    ) {
+
       return res.status(400).json({
+
         success: false,
-        reason: 'INVALID_AMOUNT',
-        message: 'Amount must be greater than 0',
+
+        reason: 'INVALID_INTENT',
+
+        message:
+          'Invalid transaction intent',
+
       });
     }
 
 
-    // ==========================================
-    // 2. CONVERT INTENT
-    // TO EXISTING DATABASE TRANSACTION TYPE
-    // ==========================================
+    // =================================================
+    // VALIDATE AMOUNT
+    // =================================================
 
-    let transactionType;
+    if (
+      !amount ||
+      Number(amount) <= 0
+    ) {
 
-    if (intent === 'credit_given') {
-      transactionType = 'credit';
-    }
+      return res.status(400).json({
 
-    if (intent === 'payment_received') {
-      transactionType = 'payment';
-    }
+        success: false,
 
+        reason: 'INVALID_AMOUNT',
 
-    // ==========================================
-    // 3. CUSTOMER HANDLING
-    // ==========================================
+        message:
+          'Amount must be greater than 0',
 
-    let finalCustomerId = customer_id || null;
-    let finalCustomer = null;
-
-
-    // ==========================================
-    // 4. EXISTING CUSTOMER
-    // ==========================================
-
-    if (finalCustomerId) {
-      const { data: customer, error: customerError } =
-        await supabase
-          .from('customers')
-          .select('id, user_id, name, mobile')
-          .eq('id', finalCustomerId)
-          .eq('user_id', user_id)
-          .single();
-
-      if (customerError || !customer) {
-        return res.status(404).json({
-          success: false,
-          reason: 'CUSTOMER_NOT_FOUND',
-          message: 'Customer not found',
-        });
-      }
-
-      finalCustomer = customer;
+      });
     }
 
 
-    // ==========================================
-    // 5. NEW CUSTOMER
-    // ==========================================
+    // =================================================
+    // CUSTOMER
+    // =================================================
 
-    if (!finalCustomerId) {
+    if (
+      account_type ===
+      'customer'
+    ) {
 
-      if (!customer_name || !customer_name.trim()) {
-        return res.status(400).json({
-          success: false,
-          reason: 'CUSTOMER_NAME_MISSING',
-          message:
-            'customer_name is required for a new customer',
-        });
-      }
+      let finalCustomerId =
+        customer_id || null;
 
-
-      // ----------------------------------------
-      // DOUBLE CHECK CUSTOMER
-      // ----------------------------------------
-
-      const matchResult = await findCustomerByName(
-        user_id,
-        customer_name
-      );
+      let finalCustomer = null;
 
 
-      // ----------------------------------------
-      // MATCHED CUSTOMER FOUND
-      // ----------------------------------------
+      // ===============================================
+      // EXISTING CUSTOMER
+      // ===============================================
 
-      if (matchResult.status === 'matched') {
-
-        finalCustomerId =
-          matchResult.customer.id;
-
-        finalCustomer =
-          matchResult.customer;
-      }
-
-
-      // ----------------------------------------
-      // CUSTOMER REALLY DOES NOT EXIST
-      // ----------------------------------------
-
-      else if (matchResult.status === 'not_found') {
+      if (finalCustomerId) {
 
         const {
-          data: newCustomer,
+          data: customer,
           error: customerError,
         } = await supabase
+
           .from('customers')
-          .insert([
-            {
-              user_id,
-              name: customer_name.trim(),
-              mobile: mobile || null,
-            },
-          ])
-          .select('id, user_id, name, mobile')
+
+          .select(
+            'id, user_id, name, mobile'
+          )
+
+          .eq(
+            'id',
+            finalCustomerId
+          )
+
+          .eq(
+            'user_id',
+            user_id
+          )
+
           .single();
 
 
-        if (customerError) {
+        if (
+          customerError ||
+          !customer
+        ) {
 
-          console.error(
-            'CREATE VOICE CUSTOMER ERROR:',
-            customerError
-          );
+          return res.status(404).json({
 
-          return res.status(500).json({
             success: false,
-            reason: 'CUSTOMER_CREATE_FAILED',
-            message: customerError.message,
+
+            reason:
+              'CUSTOMER_NOT_FOUND',
+
+            message:
+              'Customer not found',
+
           });
         }
 
 
-        finalCustomerId =
-          newCustomer.id;
-
         finalCustomer =
-          newCustomer;
+          customer;
+
       }
 
 
-      // ----------------------------------------
-      // MULTIPLE / POSSIBLE MATCH
-      // ----------------------------------------
+      // ===============================================
+      // NEW CUSTOMER
+      // ===============================================
 
-      else {
+      if (!finalCustomerId) {
 
-        return res.status(409).json({
+        if (
+          !customer_name ||
+          !customer_name.trim()
+        ) {
+
+          return res.status(400).json({
+
+            success: false,
+
+            reason:
+              'CUSTOMER_NAME_MISSING',
+
+            message:
+              'customer_name is required',
+
+          });
+        }
+
+
+        const matchResult =
+          await findCustomerByName(
+            user_id,
+            customer_name
+          );
+
+
+        if (
+          matchResult.status ===
+          'matched'
+        ) {
+
+          finalCustomerId =
+            matchResult.customer.id;
+
+          finalCustomer =
+            matchResult.customer;
+
+        }
+
+        else if (
+          matchResult.status ===
+          'not_found'
+        ) {
+
+          const {
+            data: newCustomer,
+            error:
+              customerError,
+          } = await supabase
+
+            .from('customers')
+
+            .insert([
+              {
+                user_id,
+
+                name:
+                  customer_name.trim(),
+
+                mobile:
+                  mobile || null,
+              },
+            ])
+
+            .select(
+              'id, user_id, name, mobile'
+            )
+
+            .single();
+
+
+          if (customerError) {
+
+            console.error(
+              'CREATE VOICE CUSTOMER ERROR:',
+              customerError
+            );
+
+            return res.status(500).json({
+
+              success: false,
+
+              reason:
+                'CUSTOMER_CREATE_FAILED',
+
+              message:
+                customerError.message,
+
+            });
+          }
+
+
+          finalCustomerId =
+            newCustomer.id;
+
+          finalCustomer =
+            newCustomer;
+
+        }
+
+        else {
+
+          return res.status(409).json({
+
+            success: false,
+
+            reason:
+              matchResult.status,
+
+            message:
+              'A similar customer already exists. Please select the correct customer.',
+
+            matches:
+              matchResult.customers ||
+              (
+                matchResult.customer
+                  ? [matchResult.customer]
+                  : []
+              ),
+
+          });
+
+        }
+
+      }
+
+
+      // ===============================================
+      // CUSTOMER TRANSACTION TYPE
+      // ===============================================
+
+      let transactionType;
+
+      if (
+        intent ===
+        'credit_given'
+      ) {
+
+        transactionType =
+          'credit';
+
+      }
+
+      if (
+        intent ===
+        'payment_received'
+      ) {
+
+        transactionType =
+          'payment';
+
+      }
+
+
+      // ===============================================
+      // CREATE CUSTOMER TRANSACTION
+      // ===============================================
+
+      const {
+        data: transaction,
+        error: transactionError,
+      } = await supabase
+
+        .from('transactions')
+
+        .insert([
+          {
+
+            user_id,
+
+            customer_id:
+              finalCustomerId,
+
+            supplier_id:
+              null,
+
+            type:
+              transactionType,
+
+            amount:
+              Number(amount),
+
+            description:
+              note &&
+              note.trim()
+                ? note.trim()
+                : 'Voice entry',
+
+          },
+        ])
+
+        .select()
+
+        .single();
+
+
+      if (transactionError) {
+
+        console.error(
+          'CREATE VOICE CUSTOMER TRANSACTION ERROR:',
+          transactionError
+        );
+
+        return res.status(500).json({
 
           success: false,
 
-          reason: matchResult.status,
+          reason:
+            'TRANSACTION_CREATE_FAILED',
 
           message:
-            'A similar customer already exists. Please select the correct customer.',
+            transactionError.message,
 
-          matches:
-            matchResult.customers ||
-            (
-              matchResult.customer
-                ? [matchResult.customer]
-                : []
-            ),
         });
       }
-    }
 
 
-    // ==========================================
-    // 6. CREATE TRANSACTION
-    // ==========================================
+      // ===============================================
+      // CUSTOMER SUCCESS
+      // ===============================================
 
-    const {
-      data: transaction,
-      error: transactionError,
-    } = await supabase
-      .from('transactions')
-      .insert([
-        {
-          user_id: user_id,
+      return res.status(201).json({
 
-          customer_id: finalCustomerId,
+        success: true,
 
-          supplier_id: null,
+        account_type:
+          'customer',
 
-          type: transactionType,
+        message:
+          'Voice customer transaction confirmed successfully',
 
-          amount: Number(amount),
+        customer: {
+
+          id:
+            finalCustomer.id,
+
+          name:
+            finalCustomer.name,
+
+          mobile:
+            finalCustomer.mobile,
+
+          is_new:
+            !customer_id,
+
+        },
+
+        transaction: {
+
+          id:
+            transaction.id,
+
+          user_id:
+            transaction.user_id,
+
+          customer_id:
+            transaction.customer_id,
+
+          supplier_id:
+            transaction.supplier_id,
+
+          type:
+            transaction.type,
+
+          amount:
+            transaction.amount,
 
           description:
-            note && note.trim()
-              ? note.trim()
-              : 'Voice entry',
+            transaction.description,
+
+          created_at:
+            transaction.created_at,
+
         },
-      ])
-      .select()
-      .single();
 
-
-    // ==========================================
-    // 7. TRANSACTION ERROR
-    // ==========================================
-
-    if (transactionError) {
-
-      console.error(
-        'CREATE VOICE TRANSACTION ERROR:',
-        transactionError
-      );
-
-      return res.status(500).json({
-        success: false,
-        reason: 'TRANSACTION_CREATE_FAILED',
-        message: transactionError.message,
       });
+
     }
 
 
-    // ==========================================
-    // 8. SUCCESS
-    // ==========================================
+    // =================================================
+    // SUPPLIER
+    // =================================================
 
-    return res.status(201).json({
+    if (
+      account_type ===
+      'supplier'
+    ) {
 
-      success: true,
+      let finalSupplierId =
+        supplier_id || null;
 
-      message:
-        'Voice transaction confirmed successfully',
+      let finalSupplier = null;
 
-      customer: {
-        id: finalCustomer.id,
 
-        name: finalCustomer.name,
+      // ===============================================
+      // EXISTING SUPPLIER
+      // ===============================================
 
-        mobile: finalCustomer.mobile,
+      if (finalSupplierId) {
 
-        is_new: !customer_id,
-      },
+        const {
+          data: supplier,
+          error: supplierError,
+        } = await supabase
 
-      transaction: {
+          .from('suppliers')
 
-        id: transaction.id,
+          .select(
+            'id, user_id, name, mobile'
+          )
 
-        user_id: transaction.user_id,
+          .eq(
+            'id',
+            finalSupplierId
+          )
 
-        customer_id: transaction.customer_id,
+          .eq(
+            'user_id',
+            user_id
+          )
 
-        type: transaction.type,
+          .single();
 
-        amount: transaction.amount,
 
-        description: transaction.description,
+        if (
+          supplierError ||
+          !supplier
+        ) {
 
-        created_at: transaction.created_at,
-      },
-    });
+          return res.status(404).json({
 
+            success: false,
+
+            reason:
+              'SUPPLIER_NOT_FOUND',
+
+            message:
+              'Supplier not found',
+
+          });
+        }
+
+
+        finalSupplier =
+          supplier;
+
+      }
+
+
+      // ===============================================
+      // NEW SUPPLIER
+      // ===============================================
+
+      if (!finalSupplierId) {
+
+        if (
+          !supplier_name ||
+          !supplier_name.trim()
+        ) {
+
+          return res.status(400).json({
+
+            success: false,
+
+            reason:
+              'SUPPLIER_NAME_MISSING',
+
+            message:
+              'supplier_name is required',
+
+          });
+        }
+
+
+        const matchResult =
+          await findSupplierByName(
+            user_id,
+            supplier_name
+          );
+
+
+        // =============================================
+        // MATCHED
+        // =============================================
+
+        if (
+          matchResult.status ===
+          'matched'
+        ) {
+
+          finalSupplierId =
+            matchResult.supplier.id;
+
+          finalSupplier =
+            matchResult.supplier;
+
+        }
+
+
+        // =============================================
+        // NOT FOUND -> CREATE
+        // =============================================
+
+        else if (
+          matchResult.status ===
+          'not_found'
+        ) {
+
+          const {
+            data: newSupplier,
+            error:
+              supplierError,
+          } = await supabase
+
+            .from('suppliers')
+
+            .insert([
+              {
+
+                user_id,
+
+                name:
+                  supplier_name.trim(),
+
+                mobile:
+                  mobile || null,
+
+              },
+            ])
+
+            .select(
+              'id, user_id, name, mobile'
+            )
+
+            .single();
+
+
+          if (supplierError) {
+
+            console.error(
+              'CREATE VOICE SUPPLIER ERROR:',
+              supplierError
+            );
+
+            return res.status(500).json({
+
+              success: false,
+
+              reason:
+                'SUPPLIER_CREATE_FAILED',
+
+              message:
+                supplierError.message,
+
+            });
+          }
+
+
+          finalSupplierId =
+            newSupplier.id;
+
+          finalSupplier =
+            newSupplier;
+
+        }
+
+
+        // =============================================
+        // MULTIPLE / POSSIBLE
+        // =============================================
+
+        else {
+
+          return res.status(409).json({
+
+            success: false,
+
+            reason:
+              matchResult.status,
+
+            message:
+              'A similar supplier already exists. Please select the correct supplier.',
+
+            matches:
+              matchResult.suppliers ||
+              (
+                matchResult.supplier
+                  ? [matchResult.supplier]
+                  : []
+              ),
+
+          });
+
+        }
+
+      }
+
+
+      // ===============================================
+      // SUPPLIER TRANSACTION TYPE
+      // ===============================================
+
+      let transactionType;
+
+
+      if (
+        intent ===
+        'purchase_from_supplier'
+      ) {
+
+        transactionType =
+          'debit';
+
+      }
+
+
+      if (
+        intent ===
+        'payment_to_supplier'
+      ) {
+
+        transactionType =
+          'payment';
+
+      }
+
+
+      // ===============================================
+      // CREATE SUPPLIER TRANSACTION
+      // ===============================================
+
+      const {
+        data: transaction,
+        error: transactionError,
+      } = await supabase
+
+        .from('transactions')
+
+        .insert([
+          {
+
+            user_id,
+
+            customer_id:
+              null,
+
+            supplier_id:
+              finalSupplierId,
+
+            type:
+              transactionType,
+
+            amount:
+              Number(amount),
+
+            description:
+              note &&
+              note.trim()
+                ? note.trim()
+                : 'Voice entry',
+
+          },
+        ])
+
+        .select()
+
+        .single();
+
+
+      if (transactionError) {
+
+        console.error(
+          'CREATE VOICE SUPPLIER TRANSACTION ERROR:',
+          transactionError
+        );
+
+        return res.status(500).json({
+
+          success: false,
+
+          reason:
+            'SUPPLIER_TRANSACTION_CREATE_FAILED',
+
+          message:
+            transactionError.message,
+
+        });
+      }
+
+
+      // ===============================================
+      // SUPPLIER SUCCESS
+      // ===============================================
+
+      return res.status(201).json({
+
+        success: true,
+
+        account_type:
+          'supplier',
+
+        message:
+          'Voice supplier transaction confirmed successfully',
+
+        supplier: {
+
+          id:
+            finalSupplier.id,
+
+          name:
+            finalSupplier.name,
+
+          mobile:
+            finalSupplier.mobile,
+
+          is_new:
+            !supplier_id,
+
+        },
+
+        transaction: {
+
+          id:
+            transaction.id,
+
+          user_id:
+            transaction.user_id,
+
+          customer_id:
+            transaction.customer_id,
+
+          supplier_id:
+            transaction.supplier_id,
+
+          type:
+            transaction.type,
+
+          amount:
+            transaction.amount,
+
+          description:
+            transaction.description,
+
+          created_at:
+            transaction.created_at,
+
+        },
+
+      });
+
+    }
 
   } catch (error) {
 
-    console.error('===================================');
+    console.error(
+      '==================================='
+    );
 
     console.error(
       'VOICE CONFIRM ERROR'
@@ -601,18 +1657,26 @@ router.post('/confirm', async (req, res) => {
 
     console.error(error);
 
-    console.error('===================================');
+    console.error(
+      '==================================='
+    );
 
 
     return res.status(500).json({
+
       success: false,
 
-      reason: 'VOICE_CONFIRM_SERVER_ERROR',
+      reason:
+        'VOICE_CONFIRM_SERVER_ERROR',
 
       message:
+        error.message ||
         'Failed to confirm voice transaction',
+
     });
+
   }
+
 });
 
 

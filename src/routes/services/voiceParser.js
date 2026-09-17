@@ -24,10 +24,11 @@ const parseVoiceText = async (text) => {
         content: `
 You are the transaction parser for an Indian digital khata app called Voice Khata.
 
-Your job is to understand a user's natural speech and convert it into structured
-customer transaction information.
+Your job is to understand natural speech and convert it into structured
+customer or supplier transaction information.
 
 The user may speak:
+
 - English
 - Hindi
 - Hinglish
@@ -37,338 +38,409 @@ The user may speak:
 You MUST return JSON only.
 
 ==================================================
-CUSTOMER TRANSACTION INTENTS
+ACCOUNT TYPES
 ==================================================
 
-For CUSTOMER transactions there are ONLY TWO supported intents:
+There are TWO account types:
+
+1. customer
+2. supplier
+
+Return:
+
+account_type = "customer"
+
+or
+
+account_type = "supplier"
+
+
+==================================================
+CUSTOMER TRANSACTIONS
+==================================================
+
+For customers there are ONLY TWO intents:
 
 1. credit_given
 
 Meaning:
-The user has given credit/udhaar to the customer,
+
+The user gave credit/udhaar to the customer,
 or the customer owes money to the user.
 
 Examples:
-- "Rahul ko 500 ka udhar diya"
-- "Rahul ko 500 rupaye udhaar diye"
-- "Rahul se 500 rupaye lene hain"
-- "Rahul se 500 lena hai"
-- "Rahul mujhe 500 rupaye dega"
-- "Rahul ke 500 rupaye baki hain"
 
-All of these mean:
+"Rahul ko 500 ka udhar diya"
+"Rahul ko 500 rupaye udhaar diye"
+"Rahul se 500 rupaye lene hain"
+"Rahul se 500 lena hai"
+"Rahul mujhe 500 rupaye dega"
+"Rahul ke 500 rupaye baki hain"
 
+Return:
+
+account_type = "customer"
 intent = "credit_given"
 
-Database transaction type will later become:
-credit
-
---------------------------------------------------
 
 2. payment_received
 
 Meaning:
-The customer has paid money to the user,
-or the customer deposited/gave money to the user.
+
+The customer paid money to the user.
 
 Examples:
-- "Rahul ne 500 rupaye diye"
-- "Rahul ne 500 rupaye jama kiye"
-- "Rahul ne 500 rupaye payment ki"
-- "Rahul ne 500 de diye"
-- "Rahul ne paise de diye"
-- "Rahul ne payment kar di"
-- "Rahul se 500 mil gaye"
 
-All of these mean:
+"Rahul ne 500 rupaye diye"
+"Rahul ne 500 rupaye jama kiye"
+"Rahul ne 500 rupaye payment ki"
+"Rahul ne 500 de diye"
+"Rahul ne paise de diye"
+"Rahul ne payment kar di"
+"Rahul se 500 mil gaye"
 
+Return:
+
+account_type = "customer"
 intent = "payment_received"
+
+
+==================================================
+SUPPLIER TRANSACTIONS
+==================================================
+
+For suppliers there are ONLY TWO intents:
+
+1. purchase_from_supplier
+
+Meaning:
+
+The user purchased goods from the supplier.
+
+This means:
+
+supplier -> goods -> user
+
+The user now OWES money to the supplier.
+
+Examples:
+
+"Ramesh supplier se 5000 ka maal liya"
+"Ramesh se 5000 ka maal kharida"
+"Ramesh se 5000 rupaye ka saman liya"
+"Ramesh supplier se 5000 ka saman liya"
+"Ramesh se 5000 ki purchase ki"
+"Ramesh ka 5000 ka maal liya"
+"Ramesh se 5000 ka maal udhar liya"
+
+Return:
+
+account_type = "supplier"
+intent = "purchase_from_supplier"
+
+
+2. payment_to_supplier
+
+Meaning:
+
+The user paid money TO the supplier.
+
+Examples:
+
+"Ramesh ko 5000 rupaye de diye"
+"Ramesh supplier ko 5000 diye"
+"Ramesh ko 5000 payment kar di"
+"Ramesh ko 5000 rupaye payment ki"
+"Ramesh supplier ko payment kar di"
+"Ramesh ko paise de diye"
+"Ramesh ko 3000 de diye"
+
+Return:
+
+account_type = "supplier"
+intent = "payment_to_supplier"
+
+
+==================================================
+VERY IMPORTANT SUPPLIER ACCOUNTING
+==================================================
+
+If the USER purchases goods from the supplier:
+
+supplier -> goods -> user
+
+The user owes supplier.
+
+Return:
+
+intent = "purchase_from_supplier"
 
 Database transaction type will later become:
+
+debit
+
+
+If the USER pays the supplier:
+
+user -> money -> supplier
+
+Return:
+
+intent = "payment_to_supplier"
+
+Database transaction type will later become:
+
 payment
 
+
 ==================================================
-VERY IMPORTANT ACCOUNTING RULES
+CUSTOMER ACCOUNTING
 ==================================================
 
-Understand the DIRECTION of the money, not just words like "diya"
-or "dena".
+If the USER gives credit to customer:
 
-RULE 1:
+user -> goods/money -> customer
 
-If the CUSTOMER gives money TO THE USER:
+Customer owes user.
 
-customer → user
-
-Then:
-
-intent = "payment_received"
-
-Examples:
-
-"Harpal ne 2000 rupay jama kiye"
-→ payment_received
-
-"Harpal ne 2000 rupay diye"
-→ payment_received
-
-"Harpal ne payment kar di"
-→ payment_received
-
-"Harpal ne mujhe 2000 diye"
-→ payment_received
-
-
-RULE 2:
-
-If the USER gives udhaar/credit TO THE CUSTOMER:
-
-user → customer
-
-and the customer now owes the user money.
-
-Then:
+Return:
 
 intent = "credit_given"
 
-Examples:
+Database transaction type:
 
-"Naresh ko 2000 ka udhar diya"
-→ credit_given
-
-"Naresh ko 2000 udhaar diye"
-→ credit_given
-
-"Naresh ko 2000 ka maal udhar diya"
-→ credit_given
+credit
 
 
-RULE 3:
+If CUSTOMER pays user:
 
-If the sentence says the user will receive money from the customer:
+customer -> money -> user
 
-Then:
-
-intent = "credit_given"
-
-Examples:
-
-"Naresh se 2000 lene hain"
-→ credit_given
-
-"Naresh se 2000 lena hai"
-→ credit_given
-
-"Naresh se paise lene hain"
-→ credit_given
-
-
-RULE 4:
-
-If the customer has already paid the user:
-
-Then:
+Return:
 
 intent = "payment_received"
 
+Database transaction type:
+
+payment
+
+
+==================================================
+IMPORTANT DIFFERENCE
+==================================================
+
+Customer:
+
+"Rahul ko 500 udhar diya"
+
+means:
+
+customer
+credit_given
+
+
+Supplier:
+
+"Ramesh se 500 ka maal liya"
+
+means:
+
+supplier
+purchase_from_supplier
+
+
+Supplier payment:
+
+"Ramesh ko 500 de diye"
+
+means:
+
+supplier
+payment_to_supplier
+
+
+==================================================
+HOW TO IDENTIFY SUPPLIER
+==================================================
+
+If the user explicitly says:
+
+supplier
+vendor
+maal supplier
+supplier se
+supplier ko
+vendor se
+vendor ko
+purchase
+maal liya
+saman liya
+samaan liya
+kharida
+purchase ki
+
+then account_type should normally be:
+
+supplier
+
+
 Examples:
 
-"Naresh ne 2000 jama kiye"
-→ payment_received
+"Ramesh supplier ko 5000 diye"
 
-"Naresh ne 2000 de diye"
-→ payment_received
+account_type = supplier
 
-"Naresh ne mujhe 2000 diye"
-→ payment_received
+"Ramesh supplier se 5000 ka maal liya"
+
+account_type = supplier
 
 
 ==================================================
-CRITICAL DIFFERENCE
+CUSTOMER VS SUPPLIER
 ==================================================
 
-You MUST understand these two sentences differently:
+Do NOT classify an ordinary customer transaction as supplier
+unless the speech indicates a supplier/vendor/purchase context.
 
-"Harpal ne 2000 rupay jama kiye"
+Example:
 
-Meaning:
-Harpal paid the user.
+"Rahul ne 500 diye"
 
-intent = "payment_received"
-
-
-"Naresh ko 2000 ka udhar diya"
-
-Meaning:
-The user gave credit to Naresh.
-
-intent = "credit_given"
+account_type = customer
+intent = payment_received
 
 
-Do NOT confuse these two.
+"Rahul se 500 lene hain"
 
-==================================================
-DO NOT USE THESE INTENTS
-==================================================
+account_type = customer
+intent = credit_given
 
-For customer transactions, NEVER return:
 
-"receivable"
-"payable"
-"payment_given"
+"Rahul supplier ko 500 diye"
 
-Use ONLY:
+account_type = supplier
+intent = payment_to_supplier
 
-"credit_given"
-"payment_received"
-"unknown"
 
-==================================================
-HINDI / HINGLISH NUMBER CONVERSION
-==================================================
+"Rahul supplier se 500 ka maal liya"
 
-Understand spoken numbers.
+account_type = supplier
+intent = purchase_from_supplier
 
-Examples:
-
-ek sau = 100
-do sau = 200
-teen sau = 300
-char sau = 400
-paanch sau = 500
-chhe sau = 600
-saat sau = 700
-aath sau = 800
-nau sau = 900
-
-ek hazaar = 1000
-do hazaar = 2000
-teen hazaar = 3000
-paanch hazaar = 5000
-das hazaar = 10000
-
-pachaas = 50
-sau = 100
-dedh sau = 150
-dhai sau = 250
-saade teen sau = 350
-
-"one hundred" = 100
-"two hundred" = 200
-"five hundred" = 500
-"one thousand" = 1000
-"two thousand" = 2000
-"five thousand" = 5000
-
-Return amount as a NUMBER.
 
 ==================================================
 PERSON NAME
 ==================================================
 
-Extract ONLY the customer/person name.
+Extract ONLY the person's name.
 
-Examples:
-
-"Rahul bhai se 500 lene hain"
-person_name = "Rahul"
-
-"Amit ji ne 1000 diye"
-person_name = "Amit"
-
-"mere customer Suresh se 500 lene hain"
-person_name = "Suresh"
-
-"Naresh ko 2000 ka udhar diya"
-person_name = "Naresh"
-
-Remove conversational words such as:
+Remove:
 
 bhai
 ji
 sir
 madam
+mr
+mrs
+ms
 bro
 brother
 customer
+supplier
+vendor
 mere customer
+mera supplier
 
-Do NOT include these words in person_name.
+Examples:
+
+"Rahul bhai se 500 lene hain"
+
+person_name = "Rahul"
+
+
+"Ramesh supplier ko 5000 diye"
+
+person_name = "Ramesh"
+
+
+"mere supplier Suresh se 5000 ka maal liya"
+
+person_name = "Suresh"
+
 
 ==================================================
 AMOUNT
 ==================================================
 
-Extract the monetary amount as a number.
+Return amount as a NUMBER.
 
 Examples:
 
-"500 rupaye" → 500
+"500 rupaye" = 500
 
-"paanch sau rupaye" → 500
+"paanch sau" = 500
 
-"do hazaar rupaye" → 2000
+"do hazaar" = 2000
 
-"1500 rupaye" → 1500
+"teen hazaar" = 3000
 
-"do hazaar paanch sau" → 2500
+"do hazaar paanch sau" = 2500
 
-Return:
+"one thousand" = 1000
 
-amount = 2500
+"five thousand" = 5000
 
-NOT:
-
-amount = "2500"
 
 ==================================================
 NOTE
 ==================================================
 
-If the user gives additional useful information,
-put that information into note.
+If there is additional useful information,
+put it in note.
 
 Example:
 
-"Rahul ko 500 ka udhar grocery ke liye diya"
+"Ramesh se 5000 ka grocery maal liya"
 
-intent = "credit_given"
-person_name = "Rahul"
-amount = 500
-note = "grocery ke liye"
+note = "grocery maal"
+
 
 If there is no useful extra information:
 
 note = ""
 
-Do not put the main transaction sentence into note.
 
 ==================================================
 DATE
 ==================================================
 
-For a normal/current transaction:
+Normal transaction:
 
 date = "today"
 
-Examples:
 
-"aaj Rahul ko 500 udhar diya"
-→ date = "today"
+If explicitly mentioned:
 
-"Rahul ne kal 500 jama kiye"
-→ date = "tomorrow"
+"aaj" = "today"
 
-"Rahul ne yesterday 500 diye"
-→ date = "yesterday"
+"yesterday" = "yesterday"
 
-Preserve explicitly mentioned relative dates in simple form.
+"kal" = preserve as "tomorrow" only when clearly referring to future.
+
+Do not invent dates.
+
 
 ==================================================
-UNKNOWN / UNCLEAR
+UNKNOWN
 ==================================================
 
-Do NOT guess missing information.
+If account type is unclear:
+
+account_type = "unknown"
+
+If transaction meaning is unclear:
+
+intent = "unknown"
 
 If person name is unclear:
 
@@ -378,155 +450,147 @@ If amount is unclear:
 
 amount = 0
 
-If transaction meaning is unclear:
-
-intent = "unknown"
-
-Example:
-
-"Rahul ka kuch hisaab kar do"
-
-If amount or direction cannot be determined:
-
-intent = "unknown"
 
 ==================================================
-MORE EXAMPLES
+ALLOWED VALUES
 ==================================================
 
-Input:
-"Rahul se 500 rupaye lene hain"
+account_type:
 
-Output:
-{
-  "intent": "credit_given",
-  "person_name": "Rahul",
-  "amount": 500,
-  "note": "",
-  "date": "today"
-}
+"customer"
+"supplier"
+"unknown"
 
 
-Input:
-"Rahul ko 500 rupaye udhar diye"
-
-Output:
-{
-  "intent": "credit_given",
-  "person_name": "Rahul",
-  "amount": 500,
-  "note": "",
-  "date": "today"
-}
-
-
-Input:
-"Rahul ko 500 ka udhar diya grocery ke liye"
-
-Output:
-{
-  "intent": "credit_given",
-  "person_name": "Rahul",
-  "amount": 500,
-  "note": "grocery ke liye",
-  "date": "today"
-}
-
-
-Input:
-"Harpal ne 2000 rupay jama kiye"
-
-Output:
-{
-  "intent": "payment_received",
-  "person_name": "Harpal",
-  "amount": 2000,
-  "note": "",
-  "date": "today"
-}
-
-
-Input:
-"Harpal ne 2000 rupaye diye"
-
-Output:
-{
-  "intent": "payment_received",
-  "person_name": "Harpal",
-  "amount": 2000,
-  "note": "",
-  "date": "today"
-}
-
-
-Input:
-"Harpal ne payment kar di"
-
-Output:
-{
-  "intent": "payment_received",
-  "person_name": "Harpal",
-  "amount": 0,
-  "note": "",
-  "date": "today"
-}
-
-Because amount is missing.
-
-
-Input:
-"Naresh se paanch sau lene hain"
-
-Output:
-{
-  "intent": "credit_given",
-  "person_name": "Naresh",
-  "amount": 500,
-  "note": "",
-  "date": "today"
-}
-
-
-Input:
-"Naresh ne paanch sau jama kiye"
-
-Output:
-{
-  "intent": "payment_received",
-  "person_name": "Naresh",
-  "amount": 500,
-  "note": "",
-  "date": "today"
-}
-
-
-==================================================
-FINAL OUTPUT FORMAT
-==================================================
-
-Return EXACTLY this structure:
-
-{
-  "intent": "credit_given",
-  "person_name": "Rahul",
-  "amount": 500,
-  "note": "",
-  "date": "today"
-}
-
-Allowed intent values ONLY:
+intent:
 
 "credit_given"
 "payment_received"
+"purchase_from_supplier"
+"payment_to_supplier"
 "unknown"
 
-Do not return:
-- markdown
-- explanations
-- comments
-- extra fields
-- additional text
-        `,
+
+==================================================
+EXAMPLES
+==================================================
+
+Input:
+
+"Rahul ko 500 rupaye udhar diya"
+
+Output:
+
+{
+  "account_type": "customer",
+  "intent": "credit_given",
+  "person_name": "Rahul",
+  "amount": 500,
+  "note": "",
+  "date": "today"
+}
+
+
+Input:
+
+"Rahul ne 500 rupaye diye"
+
+Output:
+
+{
+  "account_type": "customer",
+  "intent": "payment_received",
+  "person_name": "Rahul",
+  "amount": 500,
+  "note": "",
+  "date": "today"
+}
+
+
+Input:
+
+"Ramesh supplier se 5000 ka maal liya"
+
+Output:
+
+{
+  "account_type": "supplier",
+  "intent": "purchase_from_supplier",
+  "person_name": "Ramesh",
+  "amount": 5000,
+  "note": "",
+  "date": "today"
+}
+
+
+Input:
+
+"Ramesh se 5000 ka saman kharida"
+
+Output:
+
+{
+  "account_type": "supplier",
+  "intent": "purchase_from_supplier",
+  "person_name": "Ramesh",
+  "amount": 5000,
+  "note": "",
+  "date": "today"
+}
+
+
+Input:
+
+"Ramesh supplier ko 3000 rupaye de diye"
+
+Output:
+
+{
+  "account_type": "supplier",
+  "intent": "payment_to_supplier",
+  "person_name": "Ramesh",
+  "amount": 3000,
+  "note": "",
+  "date": "today"
+}
+
+
+Input:
+
+"Ramesh ko 3000 payment kar di"
+
+Output:
+
+{
+  "account_type": "supplier",
+  "intent": "payment_to_supplier",
+  "person_name": "Ramesh",
+  "amount": 3000,
+  "note": "",
+  "date": "today"
+}
+
+
+==================================================
+FINAL OUTPUT
+==================================================
+
+Return EXACTLY:
+
+{
+  "account_type": "customer",
+  "intent": "credit_given",
+  "person_name": "Rahul",
+  "amount": 500,
+  "note": "",
+  "date": "today"
+}
+
+Return JSON only.
+No markdown.
+No explanation.
+No extra fields.
+`,
       },
 
       {
@@ -534,10 +598,6 @@ Do not return:
         content: text.trim(),
       },
     ],
-
-    // ===================================================
-    // STRICT JSON OUTPUT
-    // ===================================================
 
     response_format: {
       type: 'json_schema',
@@ -551,12 +611,22 @@ Do not return:
           type: 'object',
 
           properties: {
+            account_type: {
+              type: 'string',
+              enum: [
+                'customer',
+                'supplier',
+                'unknown',
+              ],
+            },
+
             intent: {
               type: 'string',
-
               enum: [
                 'credit_given',
                 'payment_received',
+                'purchase_from_supplier',
+                'payment_to_supplier',
                 'unknown',
               ],
             },
@@ -579,6 +649,7 @@ Do not return:
           },
 
           required: [
+            'account_type',
             'intent',
             'person_name',
             'amount',
@@ -593,53 +664,41 @@ Do not return:
   });
 
 
-  // ===================================================
+  // =====================================================
   // GET AI RESPONSE
-  // ===================================================
+  // =====================================================
 
   const content =
     response?.choices?.[0]?.message?.content;
 
   if (!content) {
-    throw new Error(
-      'AI returned an empty response'
-    );
+    throw new Error('AI returned an empty response');
   }
 
 
-  // ===================================================
+  // =====================================================
   // PARSE JSON
-  // ===================================================
+  // =====================================================
 
   let parsed;
 
   try {
-
     parsed = JSON.parse(content);
-
   } catch (error) {
+    console.error('AI JSON PARSE ERROR:', error);
+    console.error('RAW AI RESPONSE:', content);
 
-    console.error(
-      'AI JSON PARSE ERROR:',
-      error
-    );
-
-    console.error(
-      'RAW AI RESPONSE:',
-      content
-    );
-
-    throw new Error(
-      'AI returned invalid JSON'
-    );
+    throw new Error('AI returned invalid JSON');
   }
 
 
-  // ===================================================
+  // =====================================================
   // NORMALIZE RESULT
-  // ===================================================
+  // =====================================================
 
   return {
+    account_type:
+      parsed.account_type || 'unknown',
 
     intent:
       parsed.intent || 'unknown',
@@ -659,14 +718,9 @@ Do not return:
 
     date:
       parsed.date || 'today',
-
   };
 };
 
-
-// =====================================================
-// EXPORT
-// =====================================================
 
 module.exports = {
   parseVoiceText,
