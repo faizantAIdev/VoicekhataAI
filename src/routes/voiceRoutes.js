@@ -2,6 +2,7 @@ const express = require('express');
 
 const {
   parseVoiceText,
+  clarifyVoiceTransaction,
 } = require('./services/voiceParser');
 
 const {
@@ -45,12 +46,14 @@ router.post('/parse', async (req, res) => {
 
         success: false,
 
-        reason: 'VOICE_TEXT_MISSING',
+        reason:
+          'VOICE_TEXT_MISSING',
 
         message:
           'Voice text is required',
 
       });
+
     }
 
 
@@ -60,12 +63,14 @@ router.post('/parse', async (req, res) => {
 
         success: false,
 
-        reason: 'USER_ID_MISSING',
+        reason:
+          'USER_ID_MISSING',
 
         message:
           'user_id is required',
 
       });
+
     }
 
 
@@ -109,6 +114,89 @@ router.post('/parse', async (req, res) => {
 
 
     // =================================================
+    // CLARIFICATION REQUIRED
+    // =================================================
+
+    /*
+      IMPORTANT:
+
+      If AI cannot confidently understand the transaction,
+      do NOT return an error.
+
+      Return the clarification question to frontend.
+
+      Example:
+
+      "Ramesh ko 3000 payment kar di"
+
+      -->
+
+      {
+        needs_clarification: true,
+        clarification_question:
+          "Ramesh customer hai ya supplier?"
+      }
+    */
+
+    if (
+      parsed.needs_clarification
+    ) {
+
+      console.log(
+        'VOICE NEEDS CLARIFICATION:',
+        parsed.clarification_question
+      );
+
+
+      return res.json({
+
+        success: true,
+
+        needs_clarification:
+          true,
+
+        clarification_question:
+          parsed.clarification_question ||
+          'Aapne kya bola?',
+
+        missing_field:
+          parsed.missing_field || '',
+
+        original_text:
+          text.trim(),
+
+        transaction: {
+
+          account_type:
+            parsed.account_type ||
+            'unknown',
+
+          intent:
+            parsed.intent ||
+            'unknown',
+
+          person_name:
+            parsed.person_name ||
+            '',
+
+          amount:
+            Number(parsed.amount) || 0,
+
+          note:
+            parsed.note || '',
+
+          date:
+            parsed.date ||
+            'today',
+
+        },
+
+      });
+
+    }
+
+
+    // =================================================
     // VALIDATE ACCOUNT TYPE
     // =================================================
 
@@ -125,12 +213,14 @@ router.post('/parse', async (req, res) => {
 
         success: false,
 
-        reason: 'INVALID_ACCOUNT_TYPE',
+        reason:
+          'INVALID_ACCOUNT_TYPE',
 
         message:
           'Could not determine customer or supplier',
 
       });
+
     }
 
 
@@ -139,16 +229,26 @@ router.post('/parse', async (req, res) => {
     // =================================================
 
     const validCustomerIntents = [
+
       'credit_given',
+
       'payment_received',
+
     ];
 
 
     const validSupplierIntents = [
+
       'purchase_from_supplier',
+
       'payment_to_supplier',
+
     ];
 
+
+    // =================================================
+    // CUSTOMER INTENT VALIDATION
+    // =================================================
 
     if (
       parsed.account_type ===
@@ -165,15 +265,22 @@ router.post('/parse', async (req, res) => {
 
           success: false,
 
-          reason: 'INVALID_INTENT',
+          reason:
+            'INVALID_INTENT',
 
           message:
             'Could not understand customer transaction',
 
         });
+
       }
+
     }
 
+
+    // =================================================
+    // SUPPLIER INTENT VALIDATION
+    // =================================================
 
     if (
       parsed.account_type ===
@@ -190,13 +297,16 @@ router.post('/parse', async (req, res) => {
 
           success: false,
 
-          reason: 'INVALID_INTENT',
+          reason:
+            'INVALID_INTENT',
 
           message:
             'Could not understand supplier transaction',
 
         });
+
       }
+
     }
 
 
@@ -213,7 +323,8 @@ router.post('/parse', async (req, res) => {
 
         success: false,
 
-        reason: 'PERSON_NAME_MISSING',
+        reason:
+          'PERSON_NAME_MISSING',
 
         message:
           `Could not understand ${
@@ -221,6 +332,7 @@ router.post('/parse', async (req, res) => {
           } name`,
 
       });
+
     }
 
 
@@ -237,12 +349,14 @@ router.post('/parse', async (req, res) => {
 
         success: false,
 
-        reason: 'AMOUNT_MISSING',
+        reason:
+          'AMOUNT_MISSING',
 
         message:
           'Could not understand transaction amount',
 
       });
+
     }
 
 
@@ -281,11 +395,17 @@ router.post('/parse', async (req, res) => {
 
           success: true,
 
-          account_type: 'supplier',
+          needs_clarification:
+            false,
 
-          supplier_found: false,
+          account_type:
+            'supplier',
 
-          reason: 'MULTIPLE_MATCHES',
+          supplier_found:
+            false,
+
+          reason:
+            'MULTIPLE_MATCHES',
 
           message:
             'Multiple suppliers matched. Please select the correct supplier.',
@@ -316,6 +436,7 @@ router.post('/parse', async (req, res) => {
           },
 
         });
+
       }
 
 
@@ -332,11 +453,17 @@ router.post('/parse', async (req, res) => {
 
           success: true,
 
-          account_type: 'supplier',
+          needs_clarification:
+            false,
 
-          supplier_found: false,
+          account_type:
+            'supplier',
 
-          reason: 'POSSIBLE_MATCH',
+          supplier_found:
+            false,
+
+          reason:
+            'POSSIBLE_MATCH',
 
           message:
             'A similar supplier was found. Please confirm.',
@@ -380,6 +507,7 @@ router.post('/parse', async (req, res) => {
           },
 
         });
+
       }
 
 
@@ -396,11 +524,17 @@ router.post('/parse', async (req, res) => {
 
           success: true,
 
-          account_type: 'supplier',
+          needs_clarification:
+            false,
 
-          supplier_found: true,
+          account_type:
+            'supplier',
 
-          reason: 'SUPPLIER_FOUND',
+          supplier_found:
+            true,
+
+          reason:
+            'SUPPLIER_FOUND',
 
           message:
             'Supplier found. Ready for confirmation.',
@@ -416,7 +550,8 @@ router.post('/parse', async (req, res) => {
             mobile:
               matchResult.supplier.mobile,
 
-            is_new: false,
+            is_new:
+              false,
 
           },
 
@@ -443,6 +578,7 @@ router.post('/parse', async (req, res) => {
           },
 
         });
+
       }
 
 
@@ -454,25 +590,34 @@ router.post('/parse', async (req, res) => {
 
         success: true,
 
-        account_type: 'supplier',
+        needs_clarification:
+          false,
 
-        supplier_found: false,
+        account_type:
+          'supplier',
 
-        reason: 'PERSON_NOT_FOUND',
+        supplier_found:
+          false,
+
+        reason:
+          'PERSON_NOT_FOUND',
 
         message:
           `Supplier "${parsed.person_name}" was not found. A new supplier can be created after confirmation.`,
 
         supplier: {
 
-          id: null,
+          id:
+            null,
 
           name:
             parsed.person_name.trim(),
 
-          mobile: null,
+          mobile:
+            null,
 
-          is_new: true,
+          is_new:
+            true,
 
         },
 
@@ -533,11 +678,17 @@ router.post('/parse', async (req, res) => {
 
         success: true,
 
-        account_type: 'customer',
+        needs_clarification:
+          false,
 
-        customer_found: false,
+        account_type:
+          'customer',
 
-        reason: 'MULTIPLE_MATCHES',
+        customer_found:
+          false,
+
+        reason:
+          'MULTIPLE_MATCHES',
 
         message:
           'Multiple customers matched. Please select the correct customer.',
@@ -568,6 +719,7 @@ router.post('/parse', async (req, res) => {
         },
 
       });
+
     }
 
 
@@ -584,11 +736,17 @@ router.post('/parse', async (req, res) => {
 
         success: true,
 
-        account_type: 'customer',
+        needs_clarification:
+          false,
 
-        customer_found: false,
+        account_type:
+          'customer',
 
-        reason: 'POSSIBLE_MATCH',
+        customer_found:
+          false,
+
+        reason:
+          'POSSIBLE_MATCH',
 
         message:
           'A similar customer was found. Please confirm.',
@@ -632,6 +790,7 @@ router.post('/parse', async (req, res) => {
         },
 
       });
+
     }
 
 
@@ -648,11 +807,17 @@ router.post('/parse', async (req, res) => {
 
         success: true,
 
-        account_type: 'customer',
+        needs_clarification:
+          false,
 
-        customer_found: true,
+        account_type:
+          'customer',
 
-        reason: 'CUSTOMER_FOUND',
+        customer_found:
+          true,
+
+        reason:
+          'CUSTOMER_FOUND',
 
         message:
           'Customer found. Ready for confirmation.',
@@ -668,7 +833,8 @@ router.post('/parse', async (req, res) => {
           mobile:
             matchResult.customer.mobile,
 
-          is_new: false,
+          is_new:
+            false,
 
         },
 
@@ -695,6 +861,7 @@ router.post('/parse', async (req, res) => {
         },
 
       });
+
     }
 
 
@@ -706,25 +873,34 @@ router.post('/parse', async (req, res) => {
 
       success: true,
 
-      account_type: 'customer',
+      needs_clarification:
+        false,
 
-      customer_found: false,
+      account_type:
+        'customer',
 
-      reason: 'PERSON_NOT_FOUND',
+      customer_found:
+        false,
+
+      reason:
+        'PERSON_NOT_FOUND',
 
       message:
         `Customer "${parsed.person_name}" was not found. A new customer can be created after confirmation.`,
 
       customer: {
 
-        id: null,
+        id:
+          null,
 
         name:
           parsed.person_name.trim(),
 
-        mobile: null,
+        mobile:
+          null,
 
-        is_new: true,
+        is_new:
+          true,
 
       },
 
@@ -797,6 +973,7 @@ router.post('/confirm', async (req, res) => {
   try {
 
     const {
+
       user_id,
 
       account_type,
@@ -828,12 +1005,14 @@ router.post('/confirm', async (req, res) => {
 
         success: false,
 
-        reason: 'USER_ID_MISSING',
+        reason:
+          'USER_ID_MISSING',
 
         message:
           'user_id is required',
 
       });
+
     }
 
 
@@ -845,19 +1024,23 @@ router.post('/confirm', async (req, res) => {
       ![
         'customer',
         'supplier',
-      ].includes(account_type)
+      ].includes(
+        account_type
+      )
     ) {
 
       return res.status(400).json({
 
         success: false,
 
-        reason: 'INVALID_ACCOUNT_TYPE',
+        reason:
+          'INVALID_ACCOUNT_TYPE',
 
         message:
           'account_type must be customer or supplier',
 
       });
+
     }
 
 
@@ -867,10 +1050,12 @@ router.post('/confirm', async (req, res) => {
 
     const validIntents =
       account_type === 'customer'
+
         ? [
             'credit_given',
             'payment_received',
           ]
+
         : [
             'purchase_from_supplier',
             'payment_to_supplier',
@@ -878,19 +1063,23 @@ router.post('/confirm', async (req, res) => {
 
 
     if (
-      !validIntents.includes(intent)
+      !validIntents.includes(
+        intent
+      )
     ) {
 
       return res.status(400).json({
 
         success: false,
 
-        reason: 'INVALID_INTENT',
+        reason:
+          'INVALID_INTENT',
 
         message:
           'Invalid transaction intent',
 
       });
+
     }
 
 
@@ -907,12 +1096,14 @@ router.post('/confirm', async (req, res) => {
 
         success: false,
 
-        reason: 'INVALID_AMOUNT',
+        reason:
+          'INVALID_AMOUNT',
 
         message:
           'Amount must be greater than 0',
 
       });
+
     }
 
 
@@ -935,11 +1126,16 @@ router.post('/confirm', async (req, res) => {
       // EXISTING CUSTOMER
       // ===============================================
 
-      if (finalCustomerId) {
+      if (
+        finalCustomerId
+      ) {
 
         const {
+
           data: customer,
+
           error: customerError,
+
         } = await supabase
 
           .from('customers')
@@ -977,6 +1173,7 @@ router.post('/confirm', async (req, res) => {
               'Customer not found',
 
           });
+
         }
 
 
@@ -990,7 +1187,9 @@ router.post('/confirm', async (req, res) => {
       // NEW CUSTOMER
       // ===============================================
 
-      if (!finalCustomerId) {
+      if (
+        !finalCustomerId
+      ) {
 
         if (
           !customer_name ||
@@ -1008,6 +1207,7 @@ router.post('/confirm', async (req, res) => {
               'customer_name is required',
 
           });
+
         }
 
 
@@ -1017,6 +1217,10 @@ router.post('/confirm', async (req, res) => {
             customer_name
           );
 
+
+        // =============================================
+        // MATCHED
+        // =============================================
 
         if (
           matchResult.status ===
@@ -1031,21 +1235,30 @@ router.post('/confirm', async (req, res) => {
 
         }
 
+
+        // =============================================
+        // NOT FOUND -> CREATE
+        // =============================================
+
         else if (
           matchResult.status ===
           'not_found'
         ) {
 
           const {
+
             data: newCustomer,
+
             error:
               customerError,
+
           } = await supabase
 
             .from('customers')
 
             .insert([
               {
+
                 user_id,
 
                 name:
@@ -1053,6 +1266,7 @@ router.post('/confirm', async (req, res) => {
 
                 mobile:
                   mobile || null,
+
               },
             ])
 
@@ -1063,12 +1277,15 @@ router.post('/confirm', async (req, res) => {
             .single();
 
 
-          if (customerError) {
+          if (
+            customerError
+          ) {
 
             console.error(
               'CREATE VOICE CUSTOMER ERROR:',
               customerError
             );
+
 
             return res.status(500).json({
 
@@ -1081,6 +1298,7 @@ router.post('/confirm', async (req, res) => {
                 customerError.message,
 
             });
+
           }
 
 
@@ -1091,6 +1309,11 @@ router.post('/confirm', async (req, res) => {
             newCustomer;
 
         }
+
+
+        // =============================================
+        // MULTIPLE / POSSIBLE
+        // =============================================
 
         else {
 
@@ -1125,6 +1348,7 @@ router.post('/confirm', async (req, res) => {
 
       let transactionType;
 
+
       if (
         intent ===
         'credit_given'
@@ -1134,6 +1358,7 @@ router.post('/confirm', async (req, res) => {
           'credit';
 
       }
+
 
       if (
         intent ===
@@ -1147,12 +1372,37 @@ router.post('/confirm', async (req, res) => {
 
 
       // ===============================================
+      // SAFETY CHECK
+      // ===============================================
+
+      if (!transactionType) {
+
+        return res.status(400).json({
+
+          success: false,
+
+          reason:
+            'TRANSACTION_TYPE_INVALID',
+
+          message:
+            'Could not determine customer transaction type',
+
+        });
+
+      }
+
+
+      // ===============================================
       // CREATE CUSTOMER TRANSACTION
       // ===============================================
 
       const {
+
         data: transaction,
-        error: transactionError,
+
+        error:
+          transactionError,
+
       } = await supabase
 
         .from('transactions')
@@ -1177,7 +1427,9 @@ router.post('/confirm', async (req, res) => {
             description:
               note &&
               note.trim()
+
                 ? note.trim()
+
                 : 'Voice entry',
 
           },
@@ -1188,12 +1440,15 @@ router.post('/confirm', async (req, res) => {
         .single();
 
 
-      if (transactionError) {
+      if (
+        transactionError
+      ) {
 
         console.error(
           'CREATE VOICE CUSTOMER TRANSACTION ERROR:',
           transactionError
         );
+
 
         return res.status(500).json({
 
@@ -1206,6 +1461,7 @@ router.post('/confirm', async (req, res) => {
             transactionError.message,
 
         });
+
       }
 
 
@@ -1291,11 +1547,17 @@ router.post('/confirm', async (req, res) => {
       // EXISTING SUPPLIER
       // ===============================================
 
-      if (finalSupplierId) {
+      if (
+        finalSupplierId
+      ) {
 
         const {
+
           data: supplier,
-          error: supplierError,
+
+          error:
+            supplierError,
+
         } = await supabase
 
           .from('suppliers')
@@ -1333,6 +1595,7 @@ router.post('/confirm', async (req, res) => {
               'Supplier not found',
 
           });
+
         }
 
 
@@ -1346,7 +1609,9 @@ router.post('/confirm', async (req, res) => {
       // NEW SUPPLIER
       // ===============================================
 
-      if (!finalSupplierId) {
+      if (
+        !finalSupplierId
+      ) {
 
         if (
           !supplier_name ||
@@ -1364,6 +1629,7 @@ router.post('/confirm', async (req, res) => {
               'supplier_name is required',
 
           });
+
         }
 
 
@@ -1402,9 +1668,12 @@ router.post('/confirm', async (req, res) => {
         ) {
 
           const {
+
             data: newSupplier,
+
             error:
               supplierError,
+
           } = await supabase
 
             .from('suppliers')
@@ -1430,12 +1699,15 @@ router.post('/confirm', async (req, res) => {
             .single();
 
 
-          if (supplierError) {
+          if (
+            supplierError
+          ) {
 
             console.error(
               'CREATE VOICE SUPPLIER ERROR:',
               supplierError
             );
+
 
             return res.status(500).json({
 
@@ -1448,6 +1720,7 @@ router.post('/confirm', async (req, res) => {
                 supplierError.message,
 
             });
+
           }
 
 
@@ -1503,8 +1776,17 @@ router.post('/confirm', async (req, res) => {
         'purchase_from_supplier'
       ) {
 
+        /*
+          IMPORTANT:
+
+          Supplier purchase is stored as
+          "purchase", NOT "debit".
+
+          This matches SupplierLedgerScreen.
+        */
+
         transactionType =
-          'debit';
+          'purchase';
 
       }
 
@@ -1521,12 +1803,37 @@ router.post('/confirm', async (req, res) => {
 
 
       // ===============================================
+      // SAFETY CHECK
+      // ===============================================
+
+      if (!transactionType) {
+
+        return res.status(400).json({
+
+          success: false,
+
+          reason:
+            'TRANSACTION_TYPE_INVALID',
+
+          message:
+            'Could not determine supplier transaction type',
+
+        });
+
+      }
+
+
+      // ===============================================
       // CREATE SUPPLIER TRANSACTION
       // ===============================================
 
       const {
+
         data: transaction,
-        error: transactionError,
+
+        error:
+          transactionError,
+
       } = await supabase
 
         .from('transactions')
@@ -1551,7 +1858,9 @@ router.post('/confirm', async (req, res) => {
             description:
               note &&
               note.trim()
+
                 ? note.trim()
+
                 : 'Voice entry',
 
           },
@@ -1562,12 +1871,15 @@ router.post('/confirm', async (req, res) => {
         .single();
 
 
-      if (transactionError) {
+      if (
+        transactionError
+      ) {
 
         console.error(
           'CREATE VOICE SUPPLIER TRANSACTION ERROR:',
           transactionError
         );
+
 
         return res.status(500).json({
 
@@ -1580,6 +1892,7 @@ router.post('/confirm', async (req, res) => {
             transactionError.message,
 
         });
+
       }
 
 
@@ -1645,6 +1958,7 @@ router.post('/confirm', async (req, res) => {
 
     }
 
+
   } catch (error) {
 
     console.error(
@@ -1678,6 +1992,966 @@ router.post('/confirm', async (req, res) => {
   }
 
 });
+// =====================================================
+// POST /api/voice/clarify
+// =====================================================
 
+router.post('/clarify', async (req, res) => {
+
+  try {
+
+    const {
+      user_id,
+      original_text,
+      question,
+      answer,
+    } = req.body;
+
+
+    // =================================================
+    // VALIDATION
+    // =================================================
+
+    if (!user_id) {
+
+      return res.status(400).json({
+
+        success: false,
+
+        reason:
+          'USER_ID_MISSING',
+
+        message:
+          'user_id is required',
+
+      });
+
+    }
+
+
+    if (
+      !original_text ||
+      typeof original_text !== 'string' ||
+      !original_text.trim()
+    ) {
+
+      return res.status(400).json({
+
+        success: false,
+
+        reason:
+          'ORIGINAL_TEXT_MISSING',
+
+        message:
+          'original_text is required',
+
+      });
+
+    }
+
+
+    if (
+      !answer ||
+      typeof answer !== 'string' ||
+      !answer.trim()
+    ) {
+
+      return res.status(400).json({
+
+        success: false,
+
+        reason:
+          'CLARIFICATION_ANSWER_MISSING',
+
+        message:
+          'answer is required',
+
+      });
+
+    }
+
+
+    console.log(
+      '-----------------------------------'
+    );
+
+    console.log(
+      'VOICE CLARIFICATION REQUEST'
+    );
+
+    console.log(
+      'USER ID:',
+      user_id
+    );
+
+    console.log(
+      'ORIGINAL TEXT:',
+      original_text
+    );
+
+    console.log(
+      'QUESTION:',
+      question
+    );
+
+    console.log(
+      'ANSWER:',
+      answer
+    );
+
+    console.log(
+      '-----------------------------------'
+    );
+
+
+    // =================================================
+    // AI CLARIFICATION
+    // =================================================
+
+    const clarified =
+      await clarifyVoiceTransaction({
+
+        originalText:
+          original_text.trim(),
+
+        question:
+          typeof question === 'string'
+            ? question.trim()
+            : '',
+
+        answer:
+          answer.trim(),
+
+      });
+
+
+    console.log(
+      'CLARIFIED RESULT:',
+      clarified
+    );
+
+
+    // =================================================
+    // STILL NEEDS CLARIFICATION
+    // =================================================
+
+    if (
+      clarified.needs_clarification
+    ) {
+
+      return res.json({
+
+        success: true,
+
+        needs_clarification:
+          true,
+
+        clarification_question:
+          clarified.clarification_question,
+
+        missing_field:
+          clarified.missing_field,
+
+        transaction: {
+
+          account_type:
+            clarified.account_type,
+
+          intent:
+            clarified.intent,
+
+          person_name:
+            clarified.person_name,
+
+          amount:
+            Number(
+              clarified.amount
+            ) || 0,
+
+          note:
+            clarified.note || '',
+
+          date:
+            clarified.date || 'today',
+
+        },
+
+      });
+
+    }
+
+
+    // =================================================
+    // VALIDATE ACCOUNT TYPE
+    // =================================================
+
+    if (
+      ![
+        'customer',
+        'supplier',
+      ].includes(
+        clarified.account_type
+      )
+    ) {
+
+      return res.status(400).json({
+
+        success: false,
+
+        reason:
+          'INVALID_ACCOUNT_TYPE',
+
+        message:
+          'Could not determine customer or supplier',
+
+      });
+
+    }
+
+
+    // =================================================
+    // VALIDATE INTENT
+    // =================================================
+
+    const validCustomerIntents = [
+
+      'credit_given',
+
+      'payment_received',
+
+    ];
+
+
+    const validSupplierIntents = [
+
+      'purchase_from_supplier',
+
+      'payment_to_supplier',
+
+    ];
+
+
+    if (
+      clarified.account_type ===
+      'customer'
+    ) {
+
+      if (
+        !validCustomerIntents.includes(
+          clarified.intent
+        )
+      ) {
+
+        return res.status(400).json({
+
+          success: false,
+
+          reason:
+            'INVALID_INTENT',
+
+          message:
+            'Could not understand customer transaction',
+
+        });
+
+      }
+
+    }
+
+
+    if (
+      clarified.account_type ===
+      'supplier'
+    ) {
+
+      if (
+        !validSupplierIntents.includes(
+          clarified.intent
+        )
+      ) {
+
+        return res.status(400).json({
+
+          success: false,
+
+          reason:
+            'INVALID_INTENT',
+
+          message:
+            'Could not understand supplier transaction',
+
+        });
+
+      }
+
+    }
+
+
+    // =================================================
+    // VALIDATE PERSON
+    // =================================================
+
+    if (
+      !clarified.person_name ||
+      !clarified.person_name.trim()
+    ) {
+
+      return res.status(400).json({
+
+        success: false,
+
+        reason:
+          'PERSON_NAME_MISSING',
+
+        message:
+          'Could not understand person name',
+
+      });
+
+    }
+
+
+    // =================================================
+    // VALIDATE AMOUNT
+    // =================================================
+
+    if (
+      !clarified.amount ||
+      Number(clarified.amount) <= 0
+    ) {
+
+      return res.status(400).json({
+
+        success: false,
+
+        reason:
+          'AMOUNT_MISSING',
+
+        message:
+          'Could not understand transaction amount',
+
+      });
+
+    }
+
+
+    // =================================================
+    // SUPPLIER MATCH
+    // =================================================
+
+    if (
+      clarified.account_type ===
+      'supplier'
+    ) {
+
+      const matchResult =
+        await findSupplierByName(
+          user_id,
+          clarified.person_name
+        );
+
+
+      console.log(
+        'CLARIFICATION SUPPLIER MATCH:',
+        matchResult
+      );
+
+
+      // ===============================================
+      // MULTIPLE
+      // ===============================================
+
+      if (
+        matchResult.status ===
+        'multiple_matches'
+      ) {
+
+        return res.json({
+
+          success: true,
+
+          needs_clarification:
+            false,
+
+          account_type:
+            'supplier',
+
+          supplier_found:
+            false,
+
+          reason:
+            'MULTIPLE_MATCHES',
+
+          message:
+            'Multiple suppliers matched. Please select the correct supplier.',
+
+          suppliers:
+            matchResult.suppliers,
+
+          transaction: {
+
+            account_type:
+              'supplier',
+
+            intent:
+              clarified.intent,
+
+            person_name:
+              clarified.person_name,
+
+            amount:
+              Number(
+                clarified.amount
+              ),
+
+            note:
+              clarified.note || '',
+
+            date:
+              clarified.date || 'today',
+
+          },
+
+        });
+
+      }
+
+
+      // ===============================================
+      // POSSIBLE MATCH
+      // ===============================================
+
+      if (
+        matchResult.status ===
+        'possible_match'
+      ) {
+
+        return res.json({
+
+          success: true,
+
+          needs_clarification:
+            false,
+
+          account_type:
+            'supplier',
+
+          supplier_found:
+            false,
+
+          reason:
+            'POSSIBLE_MATCH',
+
+          message:
+            'A similar supplier was found. Please confirm.',
+
+          suggested_supplier: {
+
+            id:
+              matchResult.supplier.id,
+
+            name:
+              matchResult.supplier.name,
+
+            mobile:
+              matchResult.supplier.mobile,
+
+            confidence:
+              matchResult.confidence,
+
+          },
+
+          transaction: {
+
+            account_type:
+              'supplier',
+
+            intent:
+              clarified.intent,
+
+            person_name:
+              clarified.person_name,
+
+            amount:
+              Number(
+                clarified.amount
+              ),
+
+            note:
+              clarified.note || '',
+
+            date:
+              clarified.date || 'today',
+
+          },
+
+        });
+
+      }
+
+
+      // ===============================================
+      // MATCHED
+      // ===============================================
+
+      if (
+        matchResult.status ===
+        'matched'
+      ) {
+
+        return res.json({
+
+          success: true,
+
+          needs_clarification:
+            false,
+
+          account_type:
+            'supplier',
+
+          supplier_found:
+            true,
+
+          reason:
+            'SUPPLIER_FOUND',
+
+          message:
+            'Supplier found. Ready for confirmation.',
+
+          supplier: {
+
+            id:
+              matchResult.supplier.id,
+
+            name:
+              matchResult.supplier.name,
+
+            mobile:
+              matchResult.supplier.mobile,
+
+            is_new:
+              false,
+
+          },
+
+          transaction: {
+
+            account_type:
+              'supplier',
+
+            intent:
+              clarified.intent,
+
+            person_name:
+              clarified.person_name,
+
+            amount:
+              Number(
+                clarified.amount
+              ),
+
+            note:
+              clarified.note || '',
+
+            date:
+              clarified.date || 'today',
+
+          },
+
+        });
+
+      }
+
+
+      // ===============================================
+      // NOT FOUND
+      // ===============================================
+
+      return res.json({
+
+        success: true,
+
+        needs_clarification:
+          false,
+
+        account_type:
+          'supplier',
+
+        supplier_found:
+          false,
+
+        reason:
+          'PERSON_NOT_FOUND',
+
+        message:
+          `Supplier "${clarified.person_name}" was not found. A new supplier can be created after confirmation.`,
+
+        supplier: {
+
+          id:
+            null,
+
+          name:
+            clarified.person_name.trim(),
+
+          mobile:
+            null,
+
+          is_new:
+            true,
+
+        },
+
+        transaction: {
+
+          account_type:
+            'supplier',
+
+          intent:
+            clarified.intent,
+
+          person_name:
+            clarified.person_name,
+
+          amount:
+            Number(
+              clarified.amount
+            ),
+
+          note:
+            clarified.note || '',
+
+          date:
+            clarified.date || 'today',
+
+        },
+
+      });
+
+    }
+
+
+    // =================================================
+    // CUSTOMER MATCH
+    // =================================================
+
+    const matchResult =
+      await findCustomerByName(
+        user_id,
+        clarified.person_name
+      );
+
+
+    console.log(
+      'CLARIFICATION CUSTOMER MATCH:',
+      matchResult
+    );
+
+
+    // =================================================
+    // MULTIPLE
+    // =================================================
+
+    if (
+      matchResult.status ===
+      'multiple_matches'
+    ) {
+
+      return res.json({
+
+        success: true,
+
+        needs_clarification:
+          false,
+
+        account_type:
+          'customer',
+
+        customer_found:
+          false,
+
+        reason:
+          'MULTIPLE_MATCHES',
+
+        message:
+          'Multiple customers matched. Please select the correct customer.',
+
+        customers:
+          matchResult.customers,
+
+        transaction: {
+
+          account_type:
+            'customer',
+
+          intent:
+            clarified.intent,
+
+          person_name:
+            clarified.person_name,
+
+          amount:
+            Number(
+              clarified.amount
+            ),
+
+          note:
+            clarified.note || '',
+
+          date:
+            clarified.date || 'today',
+
+        },
+
+      });
+
+    }
+
+
+    // =================================================
+    // POSSIBLE MATCH
+    // =================================================
+
+    if (
+      matchResult.status ===
+      'possible_match'
+    ) {
+
+      return res.json({
+
+        success: true,
+
+        needs_clarification:
+          false,
+
+        account_type:
+          'customer',
+
+        customer_found:
+          false,
+
+        reason:
+          'POSSIBLE_MATCH',
+
+        message:
+          'A similar customer was found. Please confirm.',
+
+        suggested_customer: {
+
+          id:
+            matchResult.customer.id,
+
+          name:
+            matchResult.customer.name,
+
+          mobile:
+            matchResult.customer.mobile,
+
+          confidence:
+            matchResult.confidence,
+
+        },
+
+        transaction: {
+
+          account_type:
+            'customer',
+
+          intent:
+            clarified.intent,
+
+          person_name:
+            clarified.person_name,
+
+          amount:
+            Number(
+              clarified.amount
+            ),
+
+          note:
+            clarified.note || '',
+
+          date:
+            clarified.date || 'today',
+
+        },
+
+      });
+
+    }
+
+
+    // =================================================
+    // MATCHED
+    // =================================================
+
+    if (
+      matchResult.status ===
+      'matched'
+    ) {
+
+      return res.json({
+
+        success: true,
+
+        needs_clarification:
+          false,
+
+        account_type:
+          'customer',
+
+        customer_found:
+          true,
+
+        reason:
+          'CUSTOMER_FOUND',
+
+        message:
+          'Customer found. Ready for confirmation.',
+
+        customer: {
+
+          id:
+            matchResult.customer.id,
+
+          name:
+            matchResult.customer.name,
+
+          mobile:
+            matchResult.customer.mobile,
+
+          is_new:
+            false,
+
+        },
+
+        transaction: {
+
+          account_type:
+            'customer',
+
+          intent:
+            clarified.intent,
+
+          person_name:
+            clarified.person_name,
+
+          amount:
+            Number(
+              clarified.amount
+            ),
+
+          note:
+            clarified.note || '',
+
+          date:
+            clarified.date || 'today',
+
+        },
+
+      });
+
+    }
+
+
+    // =================================================
+    // NOT FOUND
+    // =================================================
+
+    return res.json({
+
+      success: true,
+
+      needs_clarification:
+        false,
+
+      account_type:
+        'customer',
+
+      customer_found:
+        false,
+
+      reason:
+        'PERSON_NOT_FOUND',
+
+      message:
+        `Customer "${clarified.person_name}" was not found. A new customer can be created after confirmation.`,
+
+      customer: {
+
+        id:
+          null,
+
+        name:
+          clarified.person_name.trim(),
+
+        mobile:
+          null,
+
+        is_new:
+          true,
+
+      },
+
+      transaction: {
+
+        account_type:
+          'customer',
+
+        intent:
+          clarified.intent,
+
+        person_name:
+          clarified.person_name,
+
+        amount:
+          Number(
+            clarified.amount
+          ),
+
+        note:
+          clarified.note || '',
+
+        date:
+          clarified.date || 'today',
+
+      },
+
+    });
+
+
+  } catch (error) {
+
+    console.error(
+      '==================================='
+    );
+
+    console.error(
+      'VOICE CLARIFICATION ERROR'
+    );
+
+    console.error(error);
+
+    console.error(
+      '==================================='
+    );
+
+
+    return res.status(500).json({
+
+      success: false,
+
+      reason:
+        'VOICE_CLARIFY_SERVER_ERROR',
+
+      message:
+        error.message ||
+        'Failed to clarify voice input',
+
+    });
+
+  }
+
+});
 
 module.exports = router;
