@@ -5,6 +5,8 @@ const supabase = require('../config/supabase');
 // ======================================
 
 const getSuppliers = async (req, res) => {
+  const startTime = Date.now();
+
   try {
     const { user_id } = req.query;
 
@@ -15,13 +17,19 @@ const getSuppliers = async (req, res) => {
       });
     }
 
+    const queryStart = Date.now();
+
     const { data, error } = await supabase
       .from('suppliers')
-      .select('*')
+      .select('id, user_id, name, mobile, created_at')
       .eq('user_id', user_id)
       .order('created_at', {
         ascending: false,
       });
+
+    const queryTime = Date.now() - queryStart;
+
+    console.log(`🟢 Suppliers Supabase Query: ${queryTime}ms`);
 
     if (error) {
       console.error('Supabase Error:', error);
@@ -32,6 +40,10 @@ const getSuppliers = async (req, res) => {
       });
     }
 
+    console.log(
+      `⏱️ Suppliers Controller Total: ${Date.now() - startTime}ms`
+    );
+
     res.json({
       success: true,
       suppliers: data,
@@ -39,6 +51,10 @@ const getSuppliers = async (req, res) => {
 
   } catch (error) {
     console.error('Get Suppliers Error:', error);
+
+    console.log(
+      `❌ Suppliers Controller Failed: ${Date.now() - startTime}ms`
+    );
 
     res.status(500).json({
       success: false,
@@ -242,15 +258,27 @@ const deleteSupplier = async (req, res) => {
 // ======================================
 
 const getSupplierLedger = async (req, res) => {
+  const startTime = Date.now();
+
   try {
     const { id } = req.params;
 
-    // Get supplier
+    // -----------------------------
+    // 1. Supplier info query
+    // -----------------------------
+    const supplierQueryStart = Date.now();
+
     const { data: supplier, error: supplierError } = await supabase
       .from('suppliers')
       .select('id, name, mobile')
       .eq('id', id)
       .single();
+
+    const supplierQueryTime = Date.now() - supplierQueryStart;
+
+    console.log(
+      `🟢 Supplier Info Query: ${supplierQueryTime}ms`
+    );
 
     if (supplierError || !supplier) {
       return res.status(404).json({
@@ -259,7 +287,11 @@ const getSupplierLedger = async (req, res) => {
       });
     }
 
-    // Get supplier transactions
+    // -----------------------------
+    // 2. Transactions query
+    // -----------------------------
+    const transactionQueryStart = Date.now();
+
     const { data: transactions, error: transactionError } =
       await supabase
         .from('transactions')
@@ -269,8 +301,18 @@ const getSupplierLedger = async (req, res) => {
           ascending: false,
         });
 
+    const transactionQueryTime =
+      Date.now() - transactionQueryStart;
+
+    console.log(
+      `🟢 Supplier Transactions Query: ${transactionQueryTime}ms`
+    );
+
     if (transactionError) {
-      console.error('Supabase Error:', transactionError);
+      console.error(
+        'Supabase Error:',
+        transactionError
+      );
 
       return res.status(500).json({
         success: false,
@@ -278,7 +320,11 @@ const getSupplierLedger = async (req, res) => {
       });
     }
 
-    // Calculate balance
+    // -----------------------------
+    // 3. Processing
+    // -----------------------------
+    const processingStart = Date.now();
+
     let totalPurchase = 0;
     let totalPayment = 0;
 
@@ -295,6 +341,20 @@ const getSupplierLedger = async (req, res) => {
     });
 
     const balance = totalPurchase - totalPayment;
+
+    const processingTime =
+      Date.now() - processingStart;
+
+    console.log(
+      `🟢 Supplier Processing: ${processingTime}ms`
+    );
+
+    // -----------------------------
+    // 4. Total controller time
+    // -----------------------------
+    console.log(
+      `⏱️ Supplier Controller Total: ${Date.now() - startTime}ms`
+    );
 
     res.json({
       success: true,
@@ -315,7 +375,14 @@ const getSupplierLedger = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Get Supplier Ledger Error:', error);
+    console.error(
+      'Get Supplier Ledger Error:',
+      error
+    );
+
+    console.log(
+      `❌ Supplier Controller Failed: ${Date.now() - startTime}ms`
+    );
 
     res.status(500).json({
       success: false,

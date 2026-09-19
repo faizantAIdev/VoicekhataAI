@@ -5,6 +5,8 @@ const supabase = require('../config/supabase');
 // ======================================
 
 const getCustomers = async (req, res) => {
+  const startTime = Date.now();
+
   try {
     const { user_id } = req.query;
 
@@ -15,13 +17,19 @@ const getCustomers = async (req, res) => {
       });
     }
 
+    const queryStart = Date.now();
+
     const { data, error } = await supabase
       .from('customers')
-      .select('*')
+      .select('id, user_id, name, mobile, created_at')
       .eq('user_id', user_id)
       .order('created_at', {
         ascending: false,
       });
+
+    const queryTime = Date.now() - queryStart;
+
+    console.log(`🟢 Customers Supabase Query: ${queryTime}ms`);
 
     if (error) {
       console.error('Supabase Error:', error);
@@ -32,6 +40,11 @@ const getCustomers = async (req, res) => {
       });
     }
 
+    const processingTime = Date.now() - queryStart - queryTime;
+
+    console.log(`🟢 Customers Processing: ${processingTime}ms`);
+    console.log(`⏱️ Customers Controller Total: ${Date.now() - startTime}ms`);
+
     res.json({
       success: true,
       customers: data,
@@ -39,6 +52,10 @@ const getCustomers = async (req, res) => {
 
   } catch (error) {
     console.error('Get Customers Error:', error);
+
+    console.log(
+      `❌ Customers Controller Failed: ${Date.now() - startTime}ms`
+    );
 
     res.status(500).json({
       success: false,

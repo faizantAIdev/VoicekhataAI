@@ -7,6 +7,8 @@ const transactionRoutes = require('./routes/transactionRoutes');
 const dashboardRoutes = require('./routes/dashboardRoutes');
 const authRoutes = require('./routes/authRoutes');
 const voiceRoutes = require('./routes/voiceRoutes');
+const employeeRoutes = require('./routes/employeeRoutes');
+
 const app = express();
 
 app.use((req, res, next) => {
@@ -53,6 +55,7 @@ app.use('/api/transactions', transactionRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/voice', voiceRoutes);
+app.use('/api/employees', employeeRoutes);
 // ==========================================
 // 404 ROUTE
 // ==========================================

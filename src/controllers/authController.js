@@ -63,6 +63,10 @@ const sendOtp = async (req, res) => {
 // VERIFY OTP
 // ======================================
 
+// ======================================
+// VERIFY OTP
+// ======================================
+
 const verifyOtp = async (req, res) => {
   try {
     const { mobile, otp } = req.body;
@@ -83,7 +87,10 @@ const verifyOtp = async (req, res) => {
       });
     }
 
-    // Check expiry
+    // ======================================
+    // CHECK EXPIRY
+    // ======================================
+
     if (Date.now() > storedOtp.expiresAt) {
       otpStore.delete(mobile);
 
@@ -93,7 +100,10 @@ const verifyOtp = async (req, res) => {
       });
     }
 
-    // Check OTP
+    // ======================================
+    // CHECK OTP
+    // ======================================
+
     if (storedOtp.otp !== otp.toString()) {
       return res.status(400).json({
         success: false,
@@ -108,17 +118,22 @@ const verifyOtp = async (req, res) => {
     // CHECK EXISTING USER
     // ======================================
 
-    const { data: existingUser, error: userError } =
-      await supabase
-        .from('users')
-        .select(
-          'id, name, mobile, business_name, created_at'
-        )
-        .eq('mobile', mobile)
-        .maybeSingle();
+    const {
+      data: existingUser,
+      error: userError,
+    } = await supabase
+      .from('users')
+      .select(
+        'id, name, mobile, business_name, business_type, city, created_at'
+      )
+      .eq('mobile', mobile)
+      .maybeSingle();
 
     if (userError) {
-      console.error(userError);
+      console.error(
+        'Existing User Check Error:',
+        userError
+      );
 
       return res.status(500).json({
         success: false,
@@ -131,10 +146,250 @@ const verifyOtp = async (req, res) => {
     // ======================================
 
     if (existingUser) {
+
+      // ======================================
+      // CHECK PENDING EMPLOYEE INVITE
+      // ======================================
+
+      const {
+        data: pendingInvite,
+        error: inviteError,
+      } = await supabase
+        .from('employee_invites')
+        .select('*')
+        .eq('employee_mobile', mobile)
+        .eq('status', 'pending')
+        .order('created_at', {
+          ascending: false,
+        })
+        .limit(1)
+        .maybeSingle();
+
+      if (inviteError) {
+        console.error(
+          'Employee Invite Check Error:',
+          inviteError
+        );
+
+        return res.status(500).json({
+          success: false,
+          message: inviteError.message,
+        });
+      }
+
+      // ======================================
+      // PENDING INVITE FOUND
+      // ======================================
+
+      if (pendingInvite) {
+
+        // Prevent owner from becoming employee
+        if (pendingInvite.owner_id === existingUser.id) {
+          return res.status(400).json({
+            success: false,
+            message: 'Owner cannot be added as employee',
+          });
+        }
+
+        // ======================================
+        // CHECK EXISTING MEMBERSHIP
+        // ======================================
+
+        const {
+          data: existingMember,
+          error: memberCheckError,
+        } = await supabase
+          .from('business_members')
+          .select('id, status')
+          .eq('owner_id', pendingInvite.owner_id)
+          .eq('employee_id', existingUser.id)
+          .maybeSingle();
+
+        if (memberCheckError) {
+          console.error(
+            'Employee Membership Check Error:',
+            memberCheckError
+          );
+
+          return res.status(500).json({
+            success: false,
+            message: memberCheckError.message,
+          });
+        }
+
+        // ======================================
+        // CREATE MEMBERSHIP
+        // ======================================
+
+        if (!existingMember) {
+
+          const {
+            error: memberCreateError,
+          } = await supabase
+            .from('business_members')
+            .insert([
+              {
+                owner_id: pendingInvite.owner_id,
+                employee_id: existingUser.id,
+
+                role: 'employee',
+
+                access_level:
+                  pendingInvite.access_level || 'custom',
+
+                can_view_customers:
+                  pendingInvite.can_view_customers,
+
+                can_manage_customers:
+                  pendingInvite.can_manage_customers,
+
+                can_view_suppliers:
+                  pendingInvite.can_view_suppliers,
+
+                can_manage_suppliers:
+                  pendingInvite.can_manage_suppliers,
+
+                can_create_transactions:
+                  pendingInvite.can_create_transactions,
+
+                can_view_transactions:
+                  pendingInvite.can_view_transactions,
+
+                can_delete_transactions:
+                  pendingInvite.can_delete_transactions,
+
+                can_view_reports:
+                  pendingInvite.can_view_reports,
+
+                can_use_voice:
+                  pendingInvite.can_use_voice,
+
+                status: 'active',
+              },
+            ]);
+
+          if (memberCreateError) {
+            console.error(
+              'Employee Membership Create Error:',
+              memberCreateError
+            );
+
+            return res.status(500).json({
+              success: false,
+              message: memberCreateError.message,
+            });
+          }
+
+        } else if (existingMember.status !== 'active') {
+
+          // ======================================
+          // RE-ACTIVATE OLD EMPLOYEE
+          // ======================================
+
+          const {
+            error: reactivateError,
+          } = await supabase
+            .from('business_members')
+            .update({
+              status: 'active',
+              access_level:
+                pendingInvite.access_level || 'custom',
+
+              can_view_customers:
+                pendingInvite.can_view_customers,
+
+              can_manage_customers:
+                pendingInvite.can_manage_customers,
+
+              can_view_suppliers:
+                pendingInvite.can_view_suppliers,
+
+              can_manage_suppliers:
+                pendingInvite.can_manage_suppliers,
+
+              can_create_transactions:
+                pendingInvite.can_create_transactions,
+
+              can_view_transactions:
+                pendingInvite.can_view_transactions,
+
+              can_delete_transactions:
+                pendingInvite.can_delete_transactions,
+
+              can_view_reports:
+                pendingInvite.can_view_reports,
+
+              can_use_voice:
+                pendingInvite.can_use_voice,
+            })
+            .eq('id', existingMember.id);
+
+          if (reactivateError) {
+            console.error(
+              'Employee Reactivation Error:',
+              reactivateError
+            );
+
+            return res.status(500).json({
+              success: false,
+              message: reactivateError.message,
+            });
+          }
+        }
+
+        // ======================================
+        // MARK INVITE AS ACCEPTED
+        // ======================================
+
+        const {
+          error: inviteUpdateError,
+        } = await supabase
+          .from('employee_invites')
+          .update({
+            status: 'accepted',
+          })
+          .eq('id', pendingInvite.id);
+
+        if (inviteUpdateError) {
+          console.error(
+            'Employee Invite Update Error:',
+            inviteUpdateError
+          );
+
+          return res.status(500).json({
+            success: false,
+            message: inviteUpdateError.message,
+          });
+        }
+
+        // ======================================
+        // EMPLOYEE LOGIN RESPONSE
+        // ======================================
+
+        return res.json({
+          success: true,
+          message: 'Employee login successful',
+          isNewUser: false,
+          isEmployee: true,
+          user: existingUser,
+          business: {
+            owner_id: pendingInvite.owner_id,
+            role: 'employee',
+            access_level:
+              pendingInvite.access_level || 'custom',
+          },
+        });
+      }
+
+      // ======================================
+      // NORMAL USER LOGIN
+      // ======================================
+
       return res.json({
         success: true,
         message: 'Login successful',
         isNewUser: false,
+        isEmployee: false,
         user: existingUser,
       });
     }
@@ -143,22 +398,27 @@ const verifyOtp = async (req, res) => {
     // NEW USER
     // ======================================
 
-    const { data: newUser, error: createError } =
-      await supabase
-        .from('users')
-        .insert([
-          {
-            mobile,
-            name: 'User',
-          },
-        ])
-        .select(
-          'id, name, mobile, business_name, created_at'
-        )
-        .single();
+    const {
+      data: newUser,
+      error: createError,
+    } = await supabase
+      .from('users')
+      .insert([
+        {
+          mobile,
+          name: 'User',
+        },
+      ])
+      .select(
+        'id, name, mobile, business_name, business_type, city, created_at'
+      )
+      .single();
 
     if (createError) {
-      console.error(createError);
+      console.error(
+        'Create User Error:',
+        createError
+      );
 
       return res.status(500).json({
         success: false,
@@ -166,17 +426,158 @@ const verifyOtp = async (req, res) => {
       });
     }
 
+    // ======================================
+    // CHECK PENDING EMPLOYEE INVITE
+    // ======================================
+
+    const {
+      data: pendingInvite,
+      error: inviteError,
+    } = await supabase
+      .from('employee_invites')
+      .select('*')
+      .eq('employee_mobile', mobile)
+      .eq('status', 'pending')
+      .order('created_at', {
+        ascending: false,
+      })
+      .limit(1)
+      .maybeSingle();
+
+    if (inviteError) {
+      console.error(
+        'New Employee Invite Check Error:',
+        inviteError
+      );
+
+      return res.status(500).json({
+        success: false,
+        message: inviteError.message,
+      });
+    }
+
+    // ======================================
+    // NEW USER IS EMPLOYEE
+    // ======================================
+
+    if (pendingInvite) {
+
+      const {
+        error: memberCreateError,
+      } = await supabase
+        .from('business_members')
+        .insert([
+          {
+            owner_id: pendingInvite.owner_id,
+            employee_id: newUser.id,
+
+            role: 'employee',
+
+            access_level:
+              pendingInvite.access_level || 'custom',
+
+            can_view_customers:
+              pendingInvite.can_view_customers,
+
+            can_manage_customers:
+              pendingInvite.can_manage_customers,
+
+            can_view_suppliers:
+              pendingInvite.can_view_suppliers,
+
+            can_manage_suppliers:
+              pendingInvite.can_manage_suppliers,
+
+            can_create_transactions:
+              pendingInvite.can_create_transactions,
+
+            can_view_transactions:
+              pendingInvite.can_view_transactions,
+
+            can_delete_transactions:
+              pendingInvite.can_delete_transactions,
+
+            can_view_reports:
+              pendingInvite.can_view_reports,
+
+            can_use_voice:
+              pendingInvite.can_use_voice,
+
+            status: 'active',
+          },
+        ]);
+
+      if (memberCreateError) {
+        console.error(
+          'New Employee Membership Error:',
+          memberCreateError
+        );
+
+        return res.status(500).json({
+          success: false,
+          message: memberCreateError.message,
+        });
+      }
+
+      // ======================================
+      // MARK INVITE ACCEPTED
+      // ======================================
+
+      const {
+        error: inviteUpdateError,
+      } = await supabase
+        .from('employee_invites')
+        .update({
+          status: 'accepted',
+        })
+        .eq('id', pendingInvite.id);
+
+      if (inviteUpdateError) {
+        console.error(
+          'New Employee Invite Update Error:',
+          inviteUpdateError
+        );
+
+        return res.status(500).json({
+          success: false,
+          message: inviteUpdateError.message,
+        });
+      }
+
+      return res.status(201).json({
+        success: true,
+        message: 'Employee account created successfully',
+        isNewUser: true,
+        isEmployee: true,
+        user: newUser,
+        business: {
+          owner_id: pendingInvite.owner_id,
+          role: 'employee',
+          access_level:
+            pendingInvite.access_level || 'custom',
+        },
+      });
+    }
+
+    // ======================================
+    // NORMAL NEW USER
+    // ======================================
+
     return res.status(201).json({
       success: true,
       message: 'Account created successfully',
       isNewUser: true,
+      isEmployee: false,
       user: newUser,
     });
 
   } catch (error) {
-    console.error('Verify OTP Error:', error);
+    console.error(
+      'Verify OTP Error:',
+      error
+    );
 
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: 'Server error',
     });
