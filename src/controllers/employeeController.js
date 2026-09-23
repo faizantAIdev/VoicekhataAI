@@ -1,5 +1,45 @@
 const supabase = require('../config/supabase');
 
+
+// ======================================
+// CHECK OWNER
+// ======================================
+
+const checkOwner = async (ownerId) => {
+  const {
+    data: owner,
+    error,
+  } = await supabase
+    .from('users')
+    .select('id, mobile, role')
+    .eq('id', ownerId)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  if (!owner) {
+    const error = new Error('Owner not found');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  // If role exists and is not owner
+  if (owner.role && owner.role !== 'owner') {
+    const error = new Error(
+      'Only business owner can manage employees'
+    );
+
+    error.statusCode = 403;
+
+    throw error;
+  }
+
+  return owner;
+};
+
+
 // ======================================
 // GET EMPLOYEES
 // ======================================
@@ -14,6 +54,12 @@ const getEmployees = async (req, res) => {
         message: 'Owner ID is required',
       });
     }
+
+    // ======================================
+    // OWNER CHECK
+    // ======================================
+
+    await checkOwner(owner_id);
 
     const { data, error } = await supabase
       .from('business_members')
@@ -50,7 +96,10 @@ const getEmployees = async (req, res) => {
       });
     }
 
-    // Get employee user information
+    // ======================================
+    // GET EMPLOYEE USER INFORMATION
+    // ======================================
+
     const employees = [];
 
     for (const member of data || []) {
@@ -83,6 +132,20 @@ const getEmployees = async (req, res) => {
 
   } catch (error) {
     console.error('Get Employees Error:', error);
+
+    if (error.statusCode === 403) {
+      return res.status(403).json({
+        success: false,
+        message: 'Only business owner can manage employees',
+      });
+    }
+
+    if (error.statusCode === 404) {
+      return res.status(404).json({
+        success: false,
+        message: 'Owner not found',
+      });
+    }
 
     return res.status(500).json({
       success: false,
@@ -150,35 +213,12 @@ const inviteEmployee = async (req, res) => {
     // CHECK OWNER
     // ======================================
 
-    const {
-      data: owner,
-      error: ownerError,
-    } = await supabase
-      .from('users')
-      .select('id, mobile')
-      .eq('id', owner_id)
-      .maybeSingle();
+    const owner = await checkOwner(owner_id);
 
-    if (ownerError) {
-      console.error(
-        'Owner Check Error:',
-        ownerError
-      );
+    // ======================================
+    // OWNER CANNOT INVITE HIMSELF
+    // ======================================
 
-      return res.status(500).json({
-        success: false,
-        message: ownerError.message,
-      });
-    }
-
-    if (!owner) {
-      return res.status(404).json({
-        success: false,
-        message: 'Owner not found',
-      });
-    }
-
-    // Owner cannot invite himself
     if (owner.mobile === employee_mobile) {
       return res.status(400).json({
         success: false,
@@ -241,7 +281,8 @@ const inviteEmployee = async (req, res) => {
       if (existingMember) {
         return res.status(400).json({
           success: false,
-          message: 'This employee is already added to your business',
+          message:
+            'This employee is already added to your business',
         });
       }
     }
@@ -276,7 +317,8 @@ const inviteEmployee = async (req, res) => {
     if (pendingInvite) {
       return res.status(400).json({
         success: false,
-        message: 'An invitation is already pending for this mobile number',
+        message:
+          'An invitation is already pending for this mobile number',
       });
     }
 
@@ -284,50 +326,52 @@ const inviteEmployee = async (req, res) => {
     // CREATE INVITE
     // ======================================
 
-    const { data: invite, error: inviteError } =
-      await supabase
-        .from('employee_invites')
-        .insert([
-          {
-            owner_id,
-            employee_name: employee_name.trim(),
-            employee_mobile,
+    const {
+      data: invite,
+      error: inviteError,
+    } = await supabase
+      .from('employee_invites')
+      .insert([
+        {
+          owner_id,
+          employee_name: employee_name.trim(),
+          employee_mobile,
 
-            access_level:
-              access_level || 'custom',
+          access_level:
+            access_level || 'custom',
 
-            can_view_customers:
-              can_view_customers ?? true,
+          can_view_customers:
+            can_view_customers ?? true,
 
-            can_manage_customers:
-              can_manage_customers ?? true,
+          can_manage_customers:
+            can_manage_customers ?? true,
 
-            can_view_suppliers:
-              can_view_suppliers ?? true,
+          can_view_suppliers:
+            can_view_suppliers ?? true,
 
-            can_manage_suppliers:
-              can_manage_suppliers ?? true,
+          can_manage_suppliers:
+            can_manage_suppliers ?? true,
 
-            can_create_transactions:
-              can_create_transactions ?? true,
+          can_create_transactions:
+            can_create_transactions ?? true,
 
-            can_view_transactions:
-              can_view_transactions ?? true,
+          can_view_transactions:
+            can_view_transactions ?? true,
 
-            can_delete_transactions:
-              can_delete_transactions ?? false,
+          can_delete_transactions:
+            can_delete_transactions ?? false,
 
-            can_view_reports:
-              can_view_reports ?? false,
+          can_view_reports:
+            can_view_reports ?? false,
 
-            can_use_voice:
-              can_use_voice ?? true,
+          can_use_voice:
+            can_use_voice ?? true,
 
-            status: 'pending',
-          },
-        ])
-        .select()
-        .single();
+          status: 'pending',
+        },
+      ])
+      .select()
+      .single();
 
     if (inviteError) {
       console.error(
@@ -353,6 +397,21 @@ const inviteEmployee = async (req, res) => {
       error
     );
 
+    if (error.statusCode === 403) {
+      return res.status(403).json({
+        success: false,
+        message:
+          'Only business owner can invite employees',
+      });
+    }
+
+    if (error.statusCode === 404) {
+      return res.status(404).json({
+        success: false,
+        message: 'Owner not found',
+      });
+    }
+
     return res.status(500).json({
       success: false,
       message: 'Server error',
@@ -377,6 +436,16 @@ const removeEmployee = async (req, res) => {
       });
     }
 
+    // ======================================
+    // OWNER CHECK
+    // ======================================
+
+    await checkOwner(owner_id);
+
+    // ======================================
+    // FIND EMPLOYEE
+    // ======================================
+
     const {
       data: member,
       error: memberError,
@@ -385,6 +454,7 @@ const removeEmployee = async (req, res) => {
       .select('id')
       .eq('id', id)
       .eq('owner_id', owner_id)
+      .eq('role', 'employee')
       .maybeSingle();
 
     if (memberError) {
@@ -406,6 +476,10 @@ const removeEmployee = async (req, res) => {
       });
     }
 
+    // ======================================
+    // REMOVE EMPLOYEE
+    // ======================================
+
     const {
       error: deleteError,
     } = await supabase
@@ -414,7 +488,8 @@ const removeEmployee = async (req, res) => {
         status: 'removed',
       })
       .eq('id', id)
-      .eq('owner_id', owner_id);
+      .eq('owner_id', owner_id)
+      .eq('role', 'employee');
 
     if (deleteError) {
       console.error(
@@ -438,6 +513,21 @@ const removeEmployee = async (req, res) => {
       'Remove Employee Error:',
       error
     );
+
+    if (error.statusCode === 403) {
+      return res.status(403).json({
+        success: false,
+        message:
+          'Only business owner can remove employees',
+      });
+    }
+
+    if (error.statusCode === 404) {
+      return res.status(404).json({
+        success: false,
+        message: 'Owner not found',
+      });
+    }
 
     return res.status(500).json({
       success: false,

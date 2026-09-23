@@ -1,5 +1,11 @@
 const supabase = require('../config/supabase');
 
+const {
+  getBusinessOwnerId,
+  requirePermission,
+} = require('../utils/businessAccess');
+
+
 // ======================================
 // GET ALL SUPPLIERS
 // ======================================
@@ -17,19 +23,33 @@ const getSuppliers = async (req, res) => {
       });
     }
 
+    await requirePermission(
+      user_id,
+      'can_view_suppliers'
+    );
+
+    // Employee → Owner ID
+    const businessOwnerId = await getBusinessOwnerId(user_id);
+
+    console.log(
+      `👤 User: ${user_id} → Business Owner: ${businessOwnerId}`
+    );
+
     const queryStart = Date.now();
 
     const { data, error } = await supabase
       .from('suppliers')
       .select('id, user_id, name, mobile, created_at')
-      .eq('user_id', user_id)
+      .eq('user_id', businessOwnerId)
       .order('created_at', {
         ascending: false,
       });
 
     const queryTime = Date.now() - queryStart;
 
-    console.log(`🟢 Suppliers Supabase Query: ${queryTime}ms`);
+    console.log(
+      `🟢 Suppliers Supabase Query: ${queryTime}ms`
+    );
 
     if (error) {
       console.error('Supabase Error:', error);
@@ -41,10 +61,12 @@ const getSuppliers = async (req, res) => {
     }
 
     console.log(
-      `⏱️ Suppliers Controller Total: ${Date.now() - startTime}ms`
+      `⏱️ Suppliers Controller Total: ${
+        Date.now() - startTime
+      }ms`
     );
 
-    res.json({
+    return res.json({
       success: true,
       suppliers: data,
     });
@@ -53,12 +75,19 @@ const getSuppliers = async (req, res) => {
     console.error('Get Suppliers Error:', error);
 
     console.log(
-      `❌ Suppliers Controller Failed: ${Date.now() - startTime}ms`
+      `❌ Suppliers Controller Failed: ${
+        Date.now() - startTime
+      }ms`
     );
 
-    res.status(500).json({
+    return res.status(
+      error.statusCode || 500
+    ).json({
       success: false,
-      message: 'Server error',
+      message:
+        error.statusCode === 403
+          ? 'You do not have permission to view suppliers'
+          : 'Server error',
     });
   }
 };
@@ -83,19 +112,27 @@ const createSupplier = async (req, res) => {
       });
     }
 
-    if (!name) {
+    await requirePermission(
+      user_id,
+      'can_manage_suppliers'
+    );
+
+    if (!name || !name.trim()) {
       return res.status(400).json({
         success: false,
         message: 'Supplier name is required',
       });
     }
 
+    // Employee → Owner ID
+    const businessOwnerId = await getBusinessOwnerId(user_id);
+
     const { data, error } = await supabase
       .from('suppliers')
       .insert([
         {
-          user_id,
-          name,
+          user_id: businessOwnerId,
+          name: name.trim(),
           mobile: mobile || null,
         },
       ])
@@ -111,7 +148,7 @@ const createSupplier = async (req, res) => {
       });
     }
 
-    res.status(201).json({
+    return res.status(201).json({
       success: true,
       message: 'Supplier created successfully',
       supplier: data,
@@ -120,9 +157,14 @@ const createSupplier = async (req, res) => {
   } catch (error) {
     console.error('Create Supplier Error:', error);
 
-    res.status(500).json({
+    return res.status(
+      error.statusCode || 500
+    ).json({
       success: false,
-      message: 'Server error',
+      message:
+        error.statusCode === 403
+          ? 'You do not have permission to manage suppliers'
+          : 'Server error',
     });
   }
 };
@@ -135,21 +177,37 @@ const createSupplier = async (req, res) => {
 const getSupplier = async (req, res) => {
   try {
     const { id } = req.params;
+    const { user_id } = req.query;
+
+    if (!user_id) {
+      return res.status(400).json({
+        success: false,
+        message: 'user_id is required',
+      });
+    }
+
+    await requirePermission(
+      user_id,
+      'can_view_suppliers'
+    );
+
+    const businessOwnerId = await getBusinessOwnerId(user_id);
 
     const { data, error } = await supabase
       .from('suppliers')
       .select('*')
       .eq('id', id)
+      .eq('user_id', businessOwnerId)
       .single();
 
-    if (error) {
+    if (error || !data) {
       return res.status(404).json({
         success: false,
         message: 'Supplier not found',
       });
     }
 
-    res.json({
+    return res.json({
       success: true,
       supplier: data,
     });
@@ -157,9 +215,14 @@ const getSupplier = async (req, res) => {
   } catch (error) {
     console.error('Get Supplier Error:', error);
 
-    res.status(500).json({
+    return res.status(
+      error.statusCode || 500
+    ).json({
       success: false,
-      message: 'Server error',
+      message:
+        error.statusCode === 403
+          ? 'You do not have permission to view suppliers'
+          : 'Server error',
     });
   }
 };
@@ -172,35 +235,55 @@ const getSupplier = async (req, res) => {
 const updateSupplier = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, mobile } = req.body;
 
-    if (!name) {
+    const {
+      user_id,
+      name,
+      mobile,
+    } = req.body;
+
+    if (!user_id) {
+      return res.status(400).json({
+        success: false,
+        message: 'user_id is required',
+      });
+    }
+
+    await requirePermission(
+      user_id,
+      'can_manage_suppliers'
+    );
+
+    if (!name || !name.trim()) {
       return res.status(400).json({
         success: false,
         message: 'Supplier name is required',
       });
     }
 
+    const businessOwnerId = await getBusinessOwnerId(user_id);
+
     const { data, error } = await supabase
       .from('suppliers')
       .update({
-        name,
+        name: name.trim(),
         mobile: mobile || null,
       })
       .eq('id', id)
+      .eq('user_id', businessOwnerId)
       .select()
       .single();
 
-    if (error) {
+    if (error || !data) {
       console.error('Supabase Error:', error);
 
-      return res.status(500).json({
+      return res.status(404).json({
         success: false,
-        message: error.message,
+        message: 'Supplier not found',
       });
     }
 
-    res.json({
+    return res.json({
       success: true,
       message: 'Supplier updated successfully',
       supplier: data,
@@ -209,9 +292,14 @@ const updateSupplier = async (req, res) => {
   } catch (error) {
     console.error('Update Supplier Error:', error);
 
-    res.status(500).json({
+    return res.status(
+      error.statusCode || 500
+    ).json({
       success: false,
-      message: 'Server error',
+      message:
+        error.statusCode === 403
+          ? 'You do not have permission to manage suppliers'
+          : 'Server error',
     });
   }
 };
@@ -224,11 +312,52 @@ const updateSupplier = async (req, res) => {
 const deleteSupplier = async (req, res) => {
   try {
     const { id } = req.params;
+    const { user_id } = req.body;
+
+    if (!user_id) {
+      return res.status(400).json({
+        success: false,
+        message: 'user_id is required',
+      });
+    }
+
+    await requirePermission(
+      user_id,
+      'can_manage_suppliers'
+    );
+
+    const businessOwnerId = await getBusinessOwnerId(user_id);
+
+    // Check supplier belongs to business
+    const {
+      data: supplier,
+      error: supplierError,
+    } = await supabase
+      .from('suppliers')
+      .select('id')
+      .eq('id', id)
+      .eq('user_id', businessOwnerId)
+      .maybeSingle();
+
+    if (supplierError) {
+      return res.status(500).json({
+        success: false,
+        message: supplierError.message,
+      });
+    }
+
+    if (!supplier) {
+      return res.status(404).json({
+        success: false,
+        message: 'Supplier not found',
+      });
+    }
 
     const { error } = await supabase
       .from('suppliers')
       .delete()
-      .eq('id', id);
+      .eq('id', id)
+      .eq('user_id', businessOwnerId);
 
     if (error) {
       console.error('Supabase Error:', error);
@@ -239,7 +368,7 @@ const deleteSupplier = async (req, res) => {
       });
     }
 
-    res.json({
+    return res.json({
       success: true,
       message: 'Supplier deleted successfully',
     });
@@ -247,12 +376,19 @@ const deleteSupplier = async (req, res) => {
   } catch (error) {
     console.error('Delete Supplier Error:', error);
 
-    res.status(500).json({
+    return res.status(
+      error.statusCode || 500
+    ).json({
       success: false,
-      message: 'Server error',
+      message:
+        error.statusCode === 403
+          ? 'You do not have permission to manage suppliers'
+          : 'Server error',
     });
   }
 };
+
+
 // ======================================
 // GET SUPPLIER LEDGER
 // ======================================
@@ -262,22 +398,47 @@ const getSupplierLedger = async (req, res) => {
 
   try {
     const { id } = req.params;
+    const { user_id } = req.query;
 
-    // -----------------------------
-    // 1. Supplier info query
-    // -----------------------------
-    const supplierQueryStart = Date.now();
+    if (!user_id) {
+      return res.status(400).json({
+        success: false,
+        message: 'user_id is required',
+      });
+    }
 
-    const { data: supplier, error: supplierError } = await supabase
-      .from('suppliers')
-      .select('id, name, mobile')
-      .eq('id', id)
-      .single();
+    await requirePermission(
+      user_id,
+      'can_view_suppliers'
+    );
 
-    const supplierQueryTime = Date.now() - supplierQueryStart;
+    // Employee → Owner ID
+    const businessOwnerId = await getBusinessOwnerId(user_id);
 
     console.log(
-      `🟢 Supplier Info Query: ${supplierQueryTime}ms`
+      `👤 User: ${user_id} → Business Owner: ${businessOwnerId}`
+    );
+
+    // ======================================
+    // 1. SUPPLIER INFO
+    // ======================================
+
+    const supplierQueryStart = Date.now();
+
+    const {
+      data: supplier,
+      error: supplierError,
+    } = await supabase
+      .from('suppliers')
+      .select('id, user_id, name, mobile')
+      .eq('id', id)
+      .eq('user_id', businessOwnerId)
+      .single();
+
+    console.log(
+      `🟢 Supplier Info Query: ${
+        Date.now() - supplierQueryStart
+      }ms`
     );
 
     if (supplierError || !supplier) {
@@ -287,25 +448,27 @@ const getSupplierLedger = async (req, res) => {
       });
     }
 
-    // -----------------------------
-    // 2. Transactions query
-    // -----------------------------
+    // ======================================
+    // 2. TRANSACTIONS
+    // ======================================
+
     const transactionQueryStart = Date.now();
 
-    const { data: transactions, error: transactionError } =
-      await supabase
-        .from('transactions')
-        .select('*')
-        .eq('supplier_id', id)
-        .order('created_at', {
-          ascending: false,
-        });
-
-    const transactionQueryTime =
-      Date.now() - transactionQueryStart;
+    const {
+      data: transactions,
+      error: transactionError,
+    } = await supabase
+      .from('transactions')
+      .select('*')
+      .eq('supplier_id', id)
+      .order('created_at', {
+        ascending: false,
+      });
 
     console.log(
-      `🟢 Supplier Transactions Query: ${transactionQueryTime}ms`
+      `🟢 Supplier Transactions Query: ${
+        Date.now() - transactionQueryStart
+      }ms`
     );
 
     if (transactionError) {
@@ -320,10 +483,9 @@ const getSupplierLedger = async (req, res) => {
       });
     }
 
-    // -----------------------------
-    // 3. Processing
-    // -----------------------------
-    const processingStart = Date.now();
+    // ======================================
+    // 3. CALCULATE BALANCE
+    // ======================================
 
     let totalPurchase = 0;
     let totalPayment = 0;
@@ -342,21 +504,17 @@ const getSupplierLedger = async (req, res) => {
 
     const balance = totalPurchase - totalPayment;
 
-    const processingTime =
-      Date.now() - processingStart;
+    // ======================================
+    // 4. TOTAL TIME
+    // ======================================
 
     console.log(
-      `🟢 Supplier Processing: ${processingTime}ms`
+      `⏱️ Supplier Controller Total: ${
+        Date.now() - startTime
+      }ms`
     );
 
-    // -----------------------------
-    // 4. Total controller time
-    // -----------------------------
-    console.log(
-      `⏱️ Supplier Controller Total: ${Date.now() - startTime}ms`
-    );
-
-    res.json({
+    return res.json({
       success: true,
 
       supplier: {
@@ -381,15 +539,23 @@ const getSupplierLedger = async (req, res) => {
     );
 
     console.log(
-      `❌ Supplier Controller Failed: ${Date.now() - startTime}ms`
+      `❌ Supplier Controller Failed: ${
+        Date.now() - startTime
+      }ms`
     );
 
-    res.status(500).json({
+    return res.status(
+      error.statusCode || 500
+    ).json({
       success: false,
-      message: 'Server error',
+      message:
+        error.statusCode === 403
+          ? 'You do not have permission to view suppliers'
+          : 'Server error',
     });
   }
 };
+
 
 module.exports = {
   getSuppliers,
@@ -397,5 +563,5 @@ module.exports = {
   getSupplier,
   updateSupplier,
   deleteSupplier,
-  getSupplierLedger
+  getSupplierLedger,
 };

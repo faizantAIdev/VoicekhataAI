@@ -8,6 +8,18 @@ const groq = new Groq({
 // CONSTANTS
 // =====================================================
 
+const VALID_LANGUAGES = [
+  'en',
+  'hi',
+  'gu',
+  'mr',
+  'bn',
+  'ta',
+  'te',
+  'kn',
+  'ml',
+];
+
 const VALID_ACCOUNT_TYPES = [
   'customer',
   'supplier',
@@ -31,6 +43,21 @@ const VALID_MISSING_FIELDS = [
 ];
 
 // =====================================================
+// LANGUAGE NORMALIZER
+// =====================================================
+
+const normalizeLanguage = (language) => {
+  if (
+    typeof language === 'string' &&
+    VALID_LANGUAGES.includes(language.trim().toLowerCase())
+  ) {
+    return language.trim().toLowerCase();
+  }
+
+  return 'en';
+};
+
+// =====================================================
 // FALLBACK QUESTION
 // =====================================================
 
@@ -39,29 +66,272 @@ const getFallbackQuestion = (
   {
     accountType,
     personName,
+    language = 'en',
   } = {}
 ) => {
-  switch (missingField) {
-    case 'account_type':
-      return personName
-        ? `${personName} customer hai ya supplier?`
-        : 'Ye customer hai ya supplier?';
+  const lang = normalizeLanguage(language);
 
-    case 'intent':
-      return 'Aapko paise lene hain ya dene hain?';
+  switch (lang) {
+    // =================================================
+    // ENGLISH
+    // =================================================
 
-    case 'person_name':
-      return 'Kis customer ya supplier ke account mein entry karni hai?';
+    case 'en':
+      switch (missingField) {
+        case 'account_type':
+          return personName
+            ? `Is ${personName} a customer or a supplier?`
+            : 'Is this a customer or a supplier?';
 
-    case 'amount':
-      return 'Kitne rupaye?';
+        case 'intent':
+          return 'Did you receive the money or make the payment?';
 
-    default:
-      if (accountType === 'unknown') {
-        return 'Ye customer hai ya supplier?';
+        case 'person_name':
+          return 'Which customer or supplier should I add this to?';
+
+        case 'amount':
+          return 'How much is the amount?';
+
+        default:
+          if (accountType === 'unknown') {
+            return 'Is this a customer or a supplier?';
+          }
+
+          return 'Please tell me a little more clearly.';
       }
 
-      return 'Thoda aur clearly bataiye.';
+    // =================================================
+    // HINDI / HINGLISH
+    // =================================================
+
+    case 'hi':
+      switch (missingField) {
+        case 'account_type':
+          return personName
+            ? `${personName} customer hai ya supplier?`
+            : 'Ye customer hai ya supplier?';
+
+        case 'intent':
+          return 'Payment aapne di hai ya aapko mili hai?';
+
+        case 'person_name':
+          return 'Kis customer ya supplier ke account mein entry karni hai?';
+
+        case 'amount':
+          return 'Kitne rupaye?';
+
+        default:
+          if (accountType === 'unknown') {
+            return 'Ye customer hai ya supplier?';
+          }
+
+          return 'Thoda aur clearly bataiye.';
+      }
+
+    // =================================================
+    // GUJARATI
+    // =================================================
+
+    case 'gu':
+      switch (missingField) {
+        case 'account_type':
+          return personName
+            ? `${personName} ગ્રાહક છે કે સપ્લાયર?`
+            : 'આ ગ્રાહક છે કે સપ્લાયર?';
+
+        case 'intent':
+          return 'પેમેન્ટ તમે આપી છે કે તમને મળી છે?';
+
+        case 'person_name':
+          return 'કયા ગ્રાહક અથવા સપ્લાયરના ખાતામાં એન્ટ્રી કરવી છે?';
+
+        case 'amount':
+          return 'કેટલા રૂપિયા?';
+
+        default:
+          if (accountType === 'unknown') {
+            return 'આ ગ્રાહક છે કે સપ્લાયર?';
+          }
+
+          return 'થોડું વધુ સ્પષ્ટ કહો.';
+      }
+
+    // =================================================
+    // MARATHI
+    // =================================================
+
+    case 'mr':
+      switch (missingField) {
+        case 'account_type':
+          return personName
+            ? `${personName} ग्राहक आहे की सप्लायर?`
+            : 'हा ग्राहक आहे की सप्लायर?';
+
+        case 'intent':
+          return 'पेमेंट तुम्ही दिले आहे की तुम्हाला मिळाले आहे?';
+
+        case 'person_name':
+          return 'कोणत्या ग्राहक किंवा सप्लायरच्या खात्यात एंट्री करायची आहे?';
+
+        case 'amount':
+          return 'किती रुपये?';
+
+        default:
+          if (accountType === 'unknown') {
+            return 'हा ग्राहक आहे की सप्लायर?';
+          }
+
+          return 'थोडे अधिक स्पष्ट सांगा.';
+      }
+
+    // =================================================
+    // BENGALI
+    // =================================================
+
+    case 'bn':
+      switch (missingField) {
+        case 'account_type':
+          return personName
+            ? `${personName} কাস্টমার নাকি সাপ্লায়ার?`
+            : 'এটা কাস্টমার নাকি সাপ্লায়ার?';
+
+        case 'intent':
+          return 'পেমেন্ট আপনি দিয়েছেন নাকি আপনি পেয়েছেন?';
+
+        case 'person_name':
+          return 'কোন কাস্টমার বা সাপ্লায়ারের অ্যাকাউন্টে এন্ট্রি করতে হবে?';
+
+        case 'amount':
+          return 'কত টাকা?';
+
+        default:
+          if (accountType === 'unknown') {
+            return 'এটা কাস্টমার নাকি সাপ্লায়ার?';
+          }
+
+          return 'আরও একটু পরিষ্কার করে বলুন।';
+      }
+
+    // =================================================
+    // TAMIL
+    // =================================================
+
+    case 'ta':
+      switch (missingField) {
+        case 'account_type':
+          return personName
+            ? `${personName} கஸ்டமரா அல்லது சப்ளையரா?`
+            : 'இவர் கஸ்டமரா அல்லது சப்ளையரா?';
+
+        case 'intent':
+          return 'பணம் நீங்கள் கொடுத்தீர்களா அல்லது பெற்றீர்களா?';
+
+        case 'person_name':
+          return 'எந்த கஸ்டமர் அல்லது சப்ளையர் கணக்கில் பதிவு செய்ய வேண்டும்?';
+
+        case 'amount':
+          return 'எவ்வளவு ரூபாய்?';
+
+        default:
+          if (accountType === 'unknown') {
+            return 'இவர் கஸ்டமரா அல்லது சப்ளையரா?';
+          }
+
+          return 'கொஞ்சம் தெளிவாக சொல்லுங்கள்.';
+      }
+
+    // =================================================
+    // TELUGU
+    // =================================================
+
+    case 'te':
+      switch (missingField) {
+        case 'account_type':
+          return personName
+            ? `${personName} కస్టమరా లేదా సప్లయరా?`
+            : 'ఇది కస్టమరా లేదా సప్లయరా?';
+
+        case 'intent':
+          return 'డబ్బు మీరు ఇచ్చారా లేదా మీకు వచ్చిందా?';
+
+        case 'person_name':
+          return 'ఏ కస్టమర్ లేదా సప్లయర్ ఖాతాలో ఎంట్రీ చేయాలి?';
+
+        case 'amount':
+          return 'ఎంత రూపాయలు?';
+
+        default:
+          if (accountType === 'unknown') {
+            return 'ఇది కస్టమరా లేదా సప్లయరా?';
+          }
+
+          return 'కొంచెం స్పష్టంగా చెప్పండి.';
+      }
+
+    // =================================================
+    // KANNADA
+    // =================================================
+
+    case 'kn':
+      switch (missingField) {
+        case 'account_type':
+          return personName
+            ? `${personName} ಗ್ರಾಹಕರಾ ಅಥವಾ ಸಪ್ಲೈಯರಾ?`
+            : 'ಇವರು ಗ್ರಾಹಕರಾ ಅಥವಾ ಸಪ್ಲೈಯರಾ?';
+
+        case 'intent':
+          return 'ಹಣವನ್ನು ನೀವು ಕೊಟ್ಟಿದ್ದೀರಾ ಅಥವಾ ನಿಮಗೆ ಬಂದಿದೆಯಾ?';
+
+        case 'person_name':
+          return 'ಯಾವ ಗ್ರಾಹಕ ಅಥವಾ ಸಪ್ಲೈಯರ್ ಖಾತೆಗೆ ಎಂಟ್ರಿ ಮಾಡಬೇಕು?';
+
+        case 'amount':
+          return 'ಎಷ್ಟು ರೂಪಾಯಿ?';
+
+        default:
+          if (accountType === 'unknown') {
+            return 'ಇವರು ಗ್ರಾಹಕರಾ ಅಥವಾ ಸಪ್ಲೈಯರಾ?';
+          }
+
+          return 'ಸ್ವಲ್ಪ ಸ್ಪಷ್ಟವಾಗಿ ಹೇಳಿ.';
+      }
+
+    // =================================================
+    // MALAYALAM
+    // =================================================
+
+    case 'ml':
+      switch (missingField) {
+        case 'account_type':
+          return personName
+            ? `${personName} കസ്റ്റമറാണോ സപ്ലയറാണോ?`
+            : 'ഇത് കസ്റ്റമറാണോ സപ്ലയറാണോ?';
+
+        case 'intent':
+          return 'പണം നിങ്ങൾ കൊടുത്തതാണോ അല്ലെങ്കിൽ നിങ്ങൾക്ക് ലഭിച്ചതാണോ?';
+
+        case 'person_name':
+          return 'ഏത് കസ്റ്റമർ അല്ലെങ്കിൽ സപ്ലയർ അക്കൗണ്ടിലാണ് എൻട്രി ചെയ്യേണ്ടത്?';
+
+        case 'amount':
+          return 'എത്ര രൂപ?';
+
+        default:
+          if (accountType === 'unknown') {
+            return 'ഇത് കസ്റ്റമറാണോ സപ്ലയറാണോ?';
+          }
+
+          return 'കുറച്ച് കൂടി വ്യക്തമായി പറയൂ.';
+      }
+
+    // =================================================
+    // DEFAULT
+    // =================================================
+
+    default:
+      return personName
+        ? `Is ${personName} a customer or a supplier?`
+        : 'Is this a customer or a supplier?';
   }
 };
 
@@ -70,6 +340,10 @@ const getFallbackQuestion = (
 // =====================================================
 
 const normalizeResult = (parsed) => {
+  const language = normalizeLanguage(
+    parsed?.language
+  );
+
   const accountType = VALID_ACCOUNT_TYPES.includes(
     parsed?.account_type
   )
@@ -112,7 +386,9 @@ const normalizeResult = (parsed) => {
       : '';
 
   let missingField =
-    VALID_MISSING_FIELDS.includes(parsed?.missing_field)
+    VALID_MISSING_FIELDS.includes(
+      parsed?.missing_field
+    )
       ? parsed.missing_field
       : '';
 
@@ -164,20 +440,31 @@ const normalizeResult = (parsed) => {
       getFallbackQuestion(missingField, {
         accountType,
         personName,
+        language,
       });
   }
 
   return {
+    language,
+
     account_type: accountType,
+
     intent,
+
     person_name: personName,
+
     amount,
+
     note,
+
     date,
+
     needs_clarification: needsClarification,
+
     clarification_question: needsClarification
       ? clarificationQuestion
       : '',
+
     missing_field: needsClarification
       ? missingField
       : '',
@@ -217,36 +504,111 @@ Your ONLY job is to understand a user's spoken transaction and convert it into t
 The user can speak naturally. Do not expect perfect grammar.
 
 ==================================================
-LANGUAGES
+SUPPORTED LANGUAGES
 ==================================================
 
-The user may use:
+The user may speak:
 
 - English
 - Hindi
 - Hinglish
 - Roman Hindi
 - Indian English
-- Devanagari Hindi
-- Mixed English + Hindi
-- Informal Indian speech
-- Short sentences
-- Incomplete sentences
-- Local/business vocabulary
+- Gujarati
+- Marathi
+- Bengali
+- Tamil
+- Telugu
+- Kannada
+- Malayalam
+- Mixed English + Indian language
+- Mixed Indian languages
+- Native scripts
+- Roman/transliterated Indian languages
+
+Understand the MEANING, not just exact keywords.
+
+The user may speak informal local/business language.
 
 Examples:
 
-"Rahul se 500 lene hain"
-"Rahul ko 500 dene hain"
-"Rahul ka 500 ka hisaab daal do"
-"Ramesh se maal uthaya"
-"Ramesh ko payment maar di"
-"bhai Rahul ke account mein 500 add karo"
-"Rahul ne paise de diye"
-"Rahul se paise mil gaye"
-"Ramesh se 5000 ka maal liya"
+Hindi:
+"Rahul se 500 rupaye lene hain"
 
-Understand the meaning, NOT just exact keywords.
+Hinglish:
+"Rahul ko 500 dene hain"
+
+Gujarati:
+"Rahul pase thi 500 leva na che"
+
+Gujarati script:
+"રાહુલ પાસેથી 500 લેવાના છે"
+
+Marathi:
+"राहुलकडून 500 रुपये घ्यायचे आहेत"
+
+Bengali:
+"রাহুলের কাছ থেকে 500 টাকা নিতে হবে"
+
+Tamil:
+"ராகுலிடம் இருந்து 500 ரூபாய் வாங்க வேண்டும்"
+
+Telugu:
+"రాహుల్ దగ్గర నుంచి 500 రూపాయలు తీసుకోవాలి"
+
+Kannada:
+"ರಾಹುಲ್‌ನಿಂದ 500 ರೂಪಾಯಿ ಪಡೆಯಬೇಕು"
+
+Malayalam:
+"രാഹുലിൽ നിന്ന് 500 രൂപ വാങ്ങണം"
+
+==================================================
+LANGUAGE DETECTION
+==================================================
+
+Return the primary language of the user's input in:
+
+language
+
+Allowed values:
+
+"en"
+"hi"
+"gu"
+"mr"
+"bn"
+"ta"
+"te"
+"kn"
+"ml"
+
+Rules:
+
+English => "en"
+
+Hindi / Roman Hindi / Hinglish => "hi"
+
+Gujarati => "gu"
+
+Marathi => "mr"
+
+Bengali => "bn"
+
+Tamil => "ta"
+
+Telugu => "te"
+
+Kannada => "kn"
+
+Malayalam => "ml"
+
+If multiple languages are mixed, use the dominant language.
+
+If Roman Hindi is mixed with English, return:
+
+"hi"
+
+The language value is used by the app for clarification and voice response.
 
 ==================================================
 LANGUAGE OF CLARIFICATION
@@ -254,27 +616,50 @@ LANGUAGE OF CLARIFICATION
 
 The clarification question MUST follow the user's language/style.
 
-If the user speaks English:
-Ask in English.
+English:
 
-Example:
 "Is Rahul a customer or a supplier?"
 
-If the user speaks Roman Hindi/Hinglish:
-Ask naturally in Roman Hindi/Hinglish.
+Roman Hindi / Hinglish:
 
-Example:
 "Rahul customer hai ya supplier?"
 
-If the user speaks Hindi in Devanagari:
-Ask in Hindi.
+Hindi:
 
-Example:
 "राहुल ग्राहक है या सप्लायर?"
+
+Gujarati:
+
+"રાહુલ ગ્રાહક છે કે સપ્લાયર?"
+
+Marathi:
+
+"राहुल ग्राहक आहे की सप्लायर?"
+
+Bengali:
+
+"রাহুল কাস্টমার নাকি সাপ্লায়ার?"
+
+Tamil:
+
+"ராகுல் கஸ்டமரா அல்லது சப்ளையரா?"
+
+Telugu:
+
+"రాహుల్ కస్టమరా లేదా సప్లయరా?"
+
+Kannada:
+
+"ರಾಹುಲ್ ಗ್ರಾಹಕರಾ ಅಥವಾ ಸಪ್ಲೈಯರಾ?"
+
+Malayalam:
+
+"രാഹുൽ കസ്റ്റമറാണോ സപ്ലയറാണോ?"
 
 Do NOT unnecessarily translate the user's language.
 
 For Roman Hindi/Hinglish:
+
 DO NOT use Devanagari unless the user used Devanagari.
 
 Keep clarification questions short and natural.
@@ -285,12 +670,13 @@ MAIN GOAL
 
 Understand:
 
-1. account_type
-2. intent
-3. person_name
-4. amount
-5. note
-6. date
+1. language
+2. account_type
+3. intent
+4. person_name
+5. amount
+6. note
+7. date
 
 There are TWO account types:
 
@@ -339,7 +725,17 @@ Examples:
 
 "Rahul ke account mein 500 udhaar hai"
 
-"Rahul ko 500 ka maal udhaar diya"
+Hindi:
+
+"राहुल को 500 रुपये उधार दिए"
+
+Gujarati:
+
+"રાહુલને 500 રૂપિયા ઉધાર આપ્યા"
+
+Marathi:
+
+"राहुलला 500 रुपये उधार दिले"
 
 Return:
 
@@ -378,6 +774,18 @@ Examples:
 "Rahul se paise mil gaye"
 
 "Rahul ne mera 500 de diya"
+
+Hindi:
+
+"राहुल ने 500 रुपये दिए"
+
+Gujarati:
+
+"રાહુલે 500 રૂપિયા આપ્યા"
+
+Marathi:
+
+"राहुलने 500 रुपये दिले"
 
 Return:
 
@@ -423,6 +831,36 @@ Examples:
 
 "Ramesh se grocery ka maal liya"
 
+Gujarati:
+
+"રમેશ પાસેથી 5000 નો માલ લીધો"
+
+"રમેશ પાસેથી સામાન ખરીદ્યો"
+
+Marathi:
+
+"रमेशकडून 5000 रुपयांचा माल घेतला"
+
+Bengali:
+
+"রাহুলের কাছ থেকে 5000 টাকার মাল নিয়েছি"
+
+Tamil:
+
+"ரமேஷிடம் இருந்து 5000 ரூபாய்க்கு பொருட்கள் வாங்கினேன்"
+
+Telugu:
+
+"రమేష్ దగ్గర నుంచి 5000 రూపాయల సరుకు తీసుకున్నాను"
+
+Kannada:
+
+"ರಮೇಶ್‌ನಿಂದ 5000 ರೂಪಾಯಿ ಮೌಲ್ಯದ ಸಾಮಾನು ತೆಗೆದುಕೊಂಡೆ"
+
+Malayalam:
+
+"രമേശിൽ നിന്ന് 5000 രൂപയുടെ സാധനം വാങ്ങി"
+
 Return:
 
 account_type = "supplier"
@@ -466,6 +904,16 @@ Examples:
 "Ramesh ko 3000 de diye"
 
 "Supplier Ramesh ko payment kar di"
+
+Gujarati:
+
+"રમેશ સપ્લાયરને 5000 રૂપિયા આપ્યા"
+
+"રમેશને 5000 ની પેમેન્ટ કરી"
+
+Marathi:
+
+"रमेश सप्लायरला 5000 रुपये दिले"
 
 Return:
 
@@ -513,42 +961,184 @@ Understand the direction.
 CUSTOMER VS SUPPLIER
 ==================================================
 
-Strong supplier signals:
+Strong CUSTOMER signals:
 
-supplier
-vendor
-maal supplier
-supplier se
-supplier ko
-vendor se
-vendor ko
-purchase
-purchase ki
-purchase kara
-maal liya
-maal uthaya
-maal kharida
-saman liya
-samaan liya
-kharida
-supplier payment
-
-Strong customer signals:
+English:
 
 customer
 customer ne
 customer ko
 customer se
+customer payment
+customer paid
+
+Hindi / Hinglish:
+
+customer
+grahak
+ग्राहक
+ग्राहक ने
+ग्राहक को
+ग्राहक से
 udhaar diya
 udhar diya
 lene hain
 lena hai
-customer payment received
-customer ne payment ki
-customer ne paise diye
 paise mil gaye
 
-IMPORTANT:
+Gujarati:
+
+ગ્રાહક
+ગ્રાહકએ
+ગ્રાહકને
+ગ્રાહક પાસેથી
+ગ્રાહક પાસેથી પૈસા મળ્યા
+ઉધાર આપ્યું
+લેવાના છે
+
+Marathi:
+
+ग्राहक
+ग्राहकाने
+ग्राहकाला
+ग्राहकाकडून
+उधार दिले
+घ्यायचे आहेत
+पैसे मिळाले
+
+Bengali:
+
+কাস্টমার
+গ্রাহক
+ক্রেতা
+কাস্টমারের কাছ থেকে
+টাকা পেয়েছি
+
+Tamil:
+
+கஸ்டமர்
+வாடிக்கையாளர்
+வாடிக்கையாளரிடமிருந்து
+பணம் கிடைத்தது
+
+Telugu:
+
+కస్టమర్
+వినియోగదారు
+కస్టమర్ దగ్గర నుంచి
+డబ్బు వచ్చింది
+
+Kannada:
+
+ಕಸ್ಟಮರ್
+ಗ್ರಾಹಕ
+ಗ್ರಾಹಕರಿಂದ
+ಹಣ ಬಂದಿದೆ
+
+Malayalam:
+
+കസ്റ്റമർ
+ഉപഭോക്താവ്
+കസ്റ്റമറിൽ നിന്ന്
+പണം ലഭിച്ചു
+
+
+==================================================
+STRONG SUPPLIER SIGNALS
+==================================================
+
+English:
+
+supplier
+vendor
+purchase
+supplier se
+supplier ko
+vendor se
+vendor ko
+goods
+items
+
+Hindi / Hinglish:
+
+supplier
+vendor
+सप्लायर
+वेंडर
+maal
+maal liya
+maal uthaya
+maal kharida
+saman liya
+samaan liya
+purchase
+kharida
+
+Gujarati:
+
+સપ્લાયર
+વેન્ડર
+માલ
+માલ લીધો
+સામાન લીધો
+ખરીદ્યું
+ખરીદી
+સપ્લાયર પાસેથી
+સપ્લાયરને
+
+Marathi:
+
+सप्लायर
+वेंडर
+माल
+माल घेतला
+सामान घेतले
+खरेदी केली
+सप्लायरकडून
+सप्लायरला
+
+Bengali:
+
+সাপ্লায়ার
+ভেন্ডর
+মাল
+কেনা
+সাপ্লায়ারের কাছ থেকে
+
+Tamil:
+
+சப்ளையர்
+விற்பனையாளர்
+பொருட்கள் வாங்கினேன்
+சப்ளையரிடம் இருந்து
+
+Telugu:
+
+సప్లయర్
+వెండర్
+సరుకు
+కొన్నాను
+సప్లయర్ దగ్గర నుంచి
+
+Kannada:
+
+ಸಪ್ಲೈಯರ್
+ವಿತರಕ
+ಸಾಮಾನು
+ಖರೀದಿಸಿದೆ
+ಸಪ್ಲೈಯರ್‌ನಿಂದ
+
+Malayalam:
+
+സപ്ലയർ
+വെൻഡർ
+സാധനം
+വാങ്ങി
+സപ്ലയറിൽ നിന്ന്
+
+==================================================
+IMPORTANT
+==================================================
 
 Do NOT decide based only on the person's name.
 
@@ -572,19 +1162,7 @@ needs_clarification = true
 
 missing_field = "account_type"
 
-Ask ONE short question.
-
-Roman Hindi/Hinglish example:
-
-"Ramesh customer hai ya supplier?"
-
-English:
-
-"Is Ramesh a customer or a supplier?"
-
-Hindi:
-
-"रमेश ग्राहक है या सप्लायर?"
+Ask ONE short question in the user's language.
 
 ==================================================
 PAYMENT DIRECTION AMBIGUITY
@@ -601,8 +1179,11 @@ But account type may still be unknown.
 Therefore:
 
 account_type = "unknown"
+
 intent = "unknown"
+
 needs_clarification = true
+
 missing_field = "account_type"
 
 Do NOT ask for amount if amount is already present.
@@ -619,6 +1200,8 @@ NOT:
 
 "Kitne rupaye?"
 
+The question must be translated into the user's language/style.
+
 ==================================================
 MISSING AMOUNT
 ==================================================
@@ -631,19 +1214,7 @@ needs_clarification = true
 
 missing_field = "amount"
 
-Ask only:
-
-"Kitne rupaye?"
-
-Example:
-
-"Ramesh se maal liya"
-
-=> supplier
-=> purchase_from_supplier
-=> Ramesh
-=> amount = 0
-=> ask amount
+Ask only for the amount.
 
 ==================================================
 MISSING PERSON
@@ -657,13 +1228,7 @@ needs_clarification = true
 
 missing_field = "person_name"
 
-Ask:
-
-"Kis customer ya supplier ke account mein entry karni hai?"
-
-English:
-
-"Which customer or supplier should I add this to?"
+Ask which customer or supplier the transaction belongs to.
 
 ==================================================
 MISSING INTENT
@@ -687,6 +1252,14 @@ English:
 
 "Did you make the payment or receive it?"
 
+Gujarati:
+
+"પેમેન્ટ તમે આપી છે કે તમને મળી છે?"
+
+Marathi:
+
+"पेमेंट तुम्ही दिले आहे की तुम्हाला मिळाले आहे?"
+
 ==================================================
 DO NOT OVER-ASK
 ==================================================
@@ -704,9 +1277,13 @@ Example:
 Return:
 
 account_type = "supplier"
+
 intent = "purchase_from_supplier"
+
 person_name = "Ramesh"
+
 amount = 5000
+
 needs_clarification = false
 
 Example:
@@ -716,16 +1293,20 @@ Example:
 Return:
 
 account_type = "customer"
+
 intent = "payment_received"
+
 person_name = "Rahul"
+
 amount = 500
+
 needs_clarification = false
 
 ==================================================
 PERSON NAME
 ==================================================
 
-Extract ONLY the person's name.
+Extract ONLY the person's/business name.
 
 Remove words such as:
 
@@ -742,10 +1323,15 @@ brother
 customer
 supplier
 vendor
+grahak
+ग्राहक
+ગ્રાહક
 mere customer
 mera customer
 mere supplier
 mera supplier
+મારો ગ્રાહક
+મારો સપ્લાયર
 
 Examples:
 
@@ -760,6 +1346,30 @@ person_name = "Ramesh"
 "mere supplier Suresh se 5000 ka maal liya"
 
 person_name = "Suresh"
+
+==================================================
+BUSINESS / SHOP NAMES
+==================================================
+
+The person_name field may also contain a business/shop name.
+
+Examples:
+
+"NK Traders se 2000 ka maal liya"
+
+person_name = "NK Traders"
+
+"Paras Medical ko 500 payment kar di"
+
+person_name = "Paras Medical"
+
+"ABC Enterprises se maal liya"
+
+person_name = "ABC Enterprises"
+
+Do NOT reduce a business name to only one word.
+
+Preserve the actual business name.
 
 ==================================================
 AMOUNT
@@ -859,6 +1469,18 @@ Never ask multiple questions in one clarification.
 FINAL VALID VALUES
 ==================================================
 
+language:
+
+"en"
+"hi"
+"gu"
+"mr"
+"bn"
+"ta"
+"te"
+"kn"
+"ml"
+
 account_type:
 
 "customer"
@@ -888,6 +1510,7 @@ FINAL JSON
 Return EXACTLY these fields:
 
 {
+  "language": "hi",
   "account_type": "...",
   "intent": "...",
   "person_name": "...",
@@ -925,6 +1548,21 @@ No extra fields.
             type: 'object',
 
             properties: {
+              language: {
+                type: 'string',
+                enum: [
+                  'en',
+                  'hi',
+                  'gu',
+                  'mr',
+                  'bn',
+                  'ta',
+                  'te',
+                  'kn',
+                  'ml',
+                ],
+              },
+
               account_type: {
                 type: 'string',
                 enum: [
@@ -982,6 +1620,7 @@ No extra fields.
             },
 
             required: [
+              'language',
               'account_type',
               'intent',
               'person_name',
@@ -1011,10 +1650,19 @@ No extra fields.
   try {
     parsed = JSON.parse(content);
   } catch (error) {
-    console.error('AI JSON PARSE ERROR:', error);
-    console.error('RAW AI RESPONSE:', content);
+    console.error(
+      'AI JSON PARSE ERROR:',
+      error
+    );
 
-    throw new Error('AI returned invalid JSON');
+    console.error(
+      'RAW AI RESPONSE:',
+      content
+    );
+
+    throw new Error(
+      'AI returned invalid JSON'
+    );
   }
 
   return normalizeResult(parsed);
@@ -1080,10 +1728,16 @@ The user may speak:
 - Hindi
 - Hinglish
 - Roman Hindi
-- Indian English
-- Devanagari Hindi
-- Mixed Hindi + English
-- Informal speech
+- Gujarati
+- Marathi
+- Bengali
+- Tamil
+- Telugu
+- Kannada
+- Malayalam
+- Mixed Indian languages
+- Native scripts
+- Roman/transliterated languages
 
 ==================================================
 MOST IMPORTANT RULE
@@ -1094,60 +1748,317 @@ DO NOT THROW AWAY THE ORIGINAL TRANSACTION.
 The original transaction contains information such as:
 
 - person
+- business name
 - amount
 - transaction direction
 - goods
 - date
 - account context
 
-The clarification answer usually provides only the missing information.
+The clarification answer usually provides ONLY the missing information.
 
 Combine BOTH.
 
+Never replace existing information unless the user explicitly corrects it.
+
 ==================================================
-LANGUAGE
+LANGUAGE DETECTION
 ==================================================
 
-The user may answer in a different style from the original.
+Return the language of the user's latest answer.
 
-Understand the answer semantically.
+Allowed:
 
-For any NEW clarification question:
+"en"
+"hi"
+"gu"
+"mr"
+"bn"
+"ta"
+"te"
+"kn"
+"ml"
 
-Use the language/style of the user's latest answer.
+English => en
 
-If latest answer is English:
-ask English.
+Hindi / Hinglish / Roman Hindi => hi
 
-If latest answer is Roman Hindi/Hinglish:
-ask Roman Hindi/Hinglish.
+Gujarati => gu
 
-If latest answer is Devanagari Hindi:
-ask Hindi in Devanagari.
+Marathi => mr
 
-Do NOT unnecessarily translate.
+Bengali => bn
+
+Tamil => ta
+
+Telugu => te
+
+Kannada => kn
+
+Malayalam => ml
+
+If the latest answer is only a short word such as:
+
+"customer"
+"supplier"
+"grahak"
+"ग्राहक"
+"ગ્રાહક"
+"500"
+
+then use the language/style of the original transaction.
+
+==================================================
+CLARIFICATION LANGUAGE
+==================================================
+
+If another clarification is required, ask it in the same language/style as the latest user answer.
+
+English:
+
+"Is Rahul a customer or a supplier?"
+
+Roman Hindi:
+
+"Rahul customer hai ya supplier?"
+
+Hindi:
+
+"राहुल ग्राहक है या सप्लायर?"
+
+Gujarati:
+
+"રાહુલ ગ્રાહક છે કે સપ્લાયર?"
+
+Marathi:
+
+"राहुल ग्राहक आहे की सप्लायर?"
+
+Bengali:
+
+"রাহুল কাস্টমার নাকি সাপ্লায়ার?"
+
+Tamil:
+
+"ராகுல் கஸ்டமரா அல்லது சப்ளையரா?"
+
+Telugu:
+
+"రాహుల్ కస్టమరా లేదా సప్లయరా?"
+
+Kannada:
+
+"ರಾಹುಲ್ ಗ್ರಾಹಕರಾ ಅಥವಾ ಸಪ್ಲೈಯರಾ?"
+
+Malayalam:
+
+"രാഹുൽ കസ്റ്റമറാണോ സപ്ലയറാണോ?"
 
 ==================================================
 VALID ACCOUNT TYPES
 ==================================================
 
 "customer"
+
 "supplier"
+
 "unknown"
 
 ==================================================
-VALID INTENTS
+MULTILINGUAL CUSTOMER ANSWERS
 ==================================================
 
-"credit_given"
+The following answers mean CUSTOMER.
 
-"payment_received"
+English:
 
-"purchase_from_supplier"
+"customer"
+"customer hai"
+"my customer"
 
-"payment_to_supplier"
+Hindi / Hinglish:
 
-"unknown"
+"customer"
+"customer hai"
+"mera customer"
+"grahak"
+"grahak hai"
+"mera grahak"
+"haan customer"
+"haan customer hai"
+"haan grahak"
+"haan grahak hai"
+"ग्राहक"
+"ग्राहक है"
+"मेरा ग्राहक"
+
+Gujarati:
+
+"ગ્રાહક"
+"ગ્રાહક છે"
+"મારો ગ્રાહક"
+"હા ગ્રાહક"
+"હા, ગ્રાહક છે"
+
+Marathi:
+
+"ग्राहक"
+"ग्राहक आहे"
+"माझा ग्राहक"
+"हो ग्राहक"
+"हो, ग्राहक आहे"
+
+Bengali:
+
+"কাস্টমার"
+"গ্রাহক"
+
+Tamil:
+
+"கஸ்டமர்"
+"வாடிக்கையாளர்"
+
+Telugu:
+
+"కస్టమర్"
+"వినియోగదారు"
+
+Kannada:
+
+"ಕಸ್ಟಮರ್"
+"ಗ್ರಾಹಕ"
+
+Malayalam:
+
+"കസ്റ്റമർ"
+"ഉപഭോക്താവ്"
+
+All mean:
+
+account_type = "customer"
+
+==================================================
+MULTILINGUAL SUPPLIER ANSWERS
+==================================================
+
+The following answers mean SUPPLIER.
+
+English:
+
+"supplier"
+"supplier hai"
+"vendor"
+"vendor hai"
+"my supplier"
+
+Hindi:
+
+"सप्लायर"
+"सप्लायर है"
+"वेंडर"
+"वेंडर है"
+"मेरा सप्लायर"
+
+Gujarati:
+
+"સપ્લાયર"
+"સપ્લાયર છે"
+"વેન્ડર"
+"વેન્ડર છે"
+"મારો સપ્લાયર"
+
+Marathi:
+
+"सप्लायर"
+"सप्लायर आहे"
+"वेंडर"
+"वेंडर आहे"
+"माझा सप्लायर"
+
+Bengali:
+
+"সাপ্লায়ার"
+"ভেন্ডর"
+
+Tamil:
+
+"சப்ளையர்"
+"விற்பனையாளர்"
+
+Telugu:
+
+"సప్లయర్"
+"వెండర్"
+
+Kannada:
+
+"ಸಪ್ಲೈಯರ್"
+"ವಿತರಕ"
+
+Malayalam:
+
+"സപ്ലയർ"
+"വെൻഡർ"
+
+All mean:
+
+account_type = "supplier"
+
+IMPORTANT:
+
+Never interpret:
+
+"grahak"
+"ग्राहक"
+"ગ્રાહક"
+
+as supplier.
+
+Never interpret:
+
+"supplier"
+"सप्लायर"
+"સપ્લાયર"
+
+as customer.
+
+==================================================
+EXAMPLE: GRAHAK
+==================================================
+
+Original:
+
+"Dinesh ke account me 200 jama kar"
+
+Question:
+
+"Dinesh customer hai ya supplier?"
+
+Answer:
+
+"grahak"
+
+The answer means:
+
+account_type = "customer"
+
+It is NOT a new transaction.
+
+Preserve:
+
+person_name = "Dinesh"
+
+amount = 200
+
+Do not remove or replace the original amount.
+
+Determine intent from the original transaction.
+
+If the original transaction is genuinely ambiguous about intent, keep:
+
+intent = "unknown"
+
+and ask ONE intent clarification.
 
 ==================================================
 CUSTOMER: CREDIT GIVEN
@@ -1160,9 +2071,13 @@ Customer owes user.
 Examples:
 
 "udhaar diya"
+
 "udhar diya"
+
 "credit diya"
+
 "lene hain"
+
 "lena hai"
 
 => credit_given
@@ -1176,9 +2091,13 @@ Customer paid user.
 Examples:
 
 "paise mil gaye"
+
 "payment received"
+
 "customer ne paise diye"
+
 "Rahul ne payment kar di"
+
 "Rahul ne paise de diye"
 
 => payment_received
@@ -1192,11 +2111,32 @@ User bought/received goods from supplier.
 Examples:
 
 "maal liya"
+
 "maal uthaya"
+
 "saman liya"
+
 "samaan liya"
+
 "kharida"
+
 "purchase ki"
+
+Gujarati:
+
+"માલ લીધો"
+
+"સામાન લીધો"
+
+"ખરીદ્યું"
+
+Marathi:
+
+"माल घेतला"
+
+"सामान घेतले"
+
+"खरेदी केली"
 
 => purchase_from_supplier
 
@@ -1209,9 +2149,22 @@ User paid supplier.
 Examples:
 
 "supplier ko paise diye"
+
 "supplier ko payment ki"
+
 "supplier ko de diye"
+
 "supplier ko payment kar di"
+
+Gujarati:
+
+"સપ્લાયરને પૈસા આપ્યા"
+
+"સપ્લાયરને પેમેન્ટ કરી"
+
+Marathi:
+
+"सप्लायरला पैसे दिले"
 
 => payment_to_supplier
 
@@ -1238,150 +2191,6 @@ USER -> money -> SUPPLIER
 => payment_to_supplier
 
 ==================================================
-EXAMPLE 1
-==================================================
-
-Original:
-
-"Ramesh ko 3000 payment kar di"
-
-Question:
-
-"Ramesh customer hai ya supplier?"
-
-Answer:
-
-"Supplier hai"
-
-Final:
-
-account_type = "supplier"
-intent = "payment_to_supplier"
-person_name = "Ramesh"
-amount = 3000
-
-==================================================
-EXAMPLE 2
-==================================================
-
-Original:
-
-"Ramesh se maal liya"
-
-Question:
-
-"Kitne rupaye ka maal liya?"
-
-Answer:
-
-"5000 rupaye"
-
-Final:
-
-account_type = "supplier"
-intent = "purchase_from_supplier"
-person_name = "Ramesh"
-amount = 5000
-
-==================================================
-EXAMPLE 3
-==================================================
-
-Original:
-
-"Rahul se 500 lene hain"
-
-Question:
-
-"Rahul customer hai ya supplier?"
-
-Answer:
-
-"Customer"
-
-Final:
-
-account_type = "customer"
-intent = "credit_given"
-person_name = "Rahul"
-amount = 500
-
-==================================================
-EXAMPLE 4
-==================================================
-
-Original:
-
-"Rahul ko 500 payment kar di"
-
-Question:
-
-"Rahul customer hai ya supplier?"
-
-Answer:
-
-"Supplier"
-
-Final:
-
-account_type = "supplier"
-intent = "payment_to_supplier"
-person_name = "Rahul"
-amount = 500
-
-==================================================
-EXAMPLE 5
-==================================================
-
-Original:
-
-"Rahul ne payment ki"
-
-Question:
-
-"Kitne rupaye?"
-
-Answer:
-
-"500"
-
-Final:
-
-If Rahul is already clearly established as customer:
-
-account_type = "customer"
-intent = "payment_received"
-person_name = "Rahul"
-amount = 500
-
-Otherwise do NOT invent account type.
-
-==================================================
-ACCOUNT TYPE ANSWERS
-==================================================
-
-If user says:
-
-"customer"
-"customer hai"
-"mera customer"
-"customer ke account mein"
-"haan customer hai"
-
-=> customer
-
-If user says:
-
-"supplier"
-"supplier hai"
-"mera supplier"
-"supplier ke account mein"
-"vendor"
-"vendor hai"
-
-=> supplier
-
-==================================================
 SHORT ANSWERS
 ==================================================
 
@@ -1393,11 +2202,25 @@ Examples:
 
 "supplier"
 
+"grahak"
+
+"ग्राहक"
+
+"ગ્રાહક"
+
 "500"
 
 "paanch sau"
 
+"पाँच सौ"
+
+"પાંચસો"
+
 "haan"
+
+"હા"
+
+"हो"
 
 "kal"
 
@@ -1417,7 +2240,15 @@ Examples:
 
 "paanch sau" = 500
 
+"पाँच सौ" = 500
+
+"પાંચસો" = 500
+
 "do hazaar" = 2000
+
+"दो हजार" = 2000
+
+"બે હજાર" = 2000
 
 "teen hazaar" = 3000
 
@@ -1433,7 +2264,7 @@ Examples:
 PERSON NAME
 ==================================================
 
-Extract person from original text first.
+Extract person/business name from original text first.
 
 Do not replace it unless the clarification explicitly corrects the person.
 
@@ -1447,6 +2278,17 @@ madam
 customer
 supplier
 vendor
+grahak
+ग्राहक
+ગ્રાહક
+
+Business names must remain intact.
+
+Example:
+
+"NK Traders se 2000 ka maal liya"
+
+person_name = "NK Traders"
 
 ==================================================
 DATE
@@ -1490,8 +2332,6 @@ needs_clarification = true
 
 Ask ONLY ONE question.
 
-missing_field must identify the most important missing field.
-
 Priority:
 
 1. account_type
@@ -1530,6 +2370,7 @@ FINAL JSON
 Return EXACTLY:
 
 {
+  "language": "hi",
   "account_type": "...",
   "intent": "...",
   "person_name": "...",
@@ -1544,7 +2385,9 @@ Return EXACTLY:
 Return JSON only.
 
 No markdown.
+
 No explanation.
+
 No extra fields.
 `,
         },
@@ -1577,6 +2420,21 @@ ${cleanAnswer}
             type: 'object',
 
             properties: {
+              language: {
+                type: 'string',
+                enum: [
+                  'en',
+                  'hi',
+                  'gu',
+                  'mr',
+                  'bn',
+                  'ta',
+                  'te',
+                  'kn',
+                  'ml',
+                ],
+              },
+
               account_type: {
                 type: 'string',
                 enum: [
@@ -1634,6 +2492,7 @@ ${cleanAnswer}
             },
 
             required: [
+              'language',
               'account_type',
               'intent',
               'person_name',

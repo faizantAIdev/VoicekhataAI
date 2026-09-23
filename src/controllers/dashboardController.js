@@ -1,10 +1,18 @@
 const supabase = require('../config/supabase');
 
+const {
+  getBusinessOwnerId,
+  checkPermission,
+} = require('../utils/businessAccess');
+
+
 // ======================================
 // GET DASHBOARD
 // ======================================
 
 const getDashboard = async (req, res) => {
+  const startTime = Date.now();
+
   try {
     const { user_id } = req.query;
 
@@ -15,43 +23,89 @@ const getDashboard = async (req, res) => {
       });
     }
 
-    // Get all transactions of this user
-    const { data: transactions, error } = await supabase
-      .from('transactions')
-      .select(`
-        *,
-        customers (
-          id,
-          name,
-          mobile
-        ),
-        suppliers (
-          id,
-          name,
-          mobile
-        )
-      `)
-      .eq('user_id', user_id)
-      .order('created_at', {
-        ascending: false,
-      });
+    // ======================================
+    // CHECK TRANSACTION VIEW PERMISSION
+    // ======================================
 
-    if (error) {
-      return res.status(500).json({
-        success: false,
-        message: error.message,
-      });
+    const transactionPermission =
+      await checkPermission(
+        user_id,
+        'can_view_transactions'
+      );
+
+    const canViewTransactions =
+      transactionPermission.allowed;
+
+    // ======================================
+    // GET BUSINESS OWNER
+    // ======================================
+
+    const businessOwnerId =
+      await getBusinessOwnerId(user_id);
+
+    console.log(
+      `👤 Dashboard User: ${user_id} → Business Owner: ${businessOwnerId}`
+    );
+
+    // ======================================
+    // GET BUSINESS TRANSACTIONS
+    // ======================================
+
+    let transactions = [];
+
+    if (canViewTransactions) {
+      const queryStart = Date.now();
+
+      const {
+        data,
+        error,
+      } = await supabase
+        .from('transactions')
+        .select(`
+          *,
+          customers (
+            id,
+            name,
+            mobile
+          ),
+          suppliers (
+            id,
+            name,
+            mobile
+          )
+        `)
+        .eq('user_id', businessOwnerId)
+        .order('created_at', {
+          ascending: false,
+        });
+
+      const queryTime = Date.now() - queryStart;
+
+      console.log(
+        `🟢 Dashboard Supabase Query: ${queryTime}ms`
+      );
+
+      if (error) {
+        console.error('Supabase Error:', error);
+
+        return res.status(500).json({
+          success: false,
+          message: error.message,
+        });
+      }
+
+      transactions = data || [];
     }
 
     // ======================================
-    // CALCULATE CUSTOMER RECEIVABLE
+    // CUSTOMER RECEIVABLE
     // ======================================
 
     let totalCredit = 0;
     let totalCustomerPayment = 0;
 
     // ======================================
-    // CALCULATE SUPPLIER PAYABLE
+    // SUPPLIER PAYABLE
     // ======================================
 
     let totalPurchase = 0;
@@ -60,11 +114,12 @@ const getDashboard = async (req, res) => {
     transactions.forEach((transaction) => {
       const amount = Number(transaction.amount);
 
-      // Customer
+      // Customer credit
       if (transaction.type === 'credit') {
         totalCredit += amount;
       }
 
+      // Customer payment
       if (
         transaction.type === 'payment' &&
         transaction.customer_id
@@ -72,11 +127,12 @@ const getDashboard = async (req, res) => {
         totalCustomerPayment += amount;
       }
 
-      // Supplier
+      // Supplier purchase
       if (transaction.type === 'purchase') {
         totalPurchase += amount;
       }
 
+      // Supplier payment
       if (
         transaction.type === 'payment' &&
         transaction.supplier_id
@@ -103,8 +159,8 @@ const getDashboard = async (req, res) => {
     const endOfDay = new Date(today);
     endOfDay.setHours(23, 59, 59, 999);
 
-    const todayTransactions = transactions.filter(
-      (transaction) => {
+    const todayTransactions =
+      transactions.filter((transaction) => {
         const transactionDate =
           new Date(transaction.created_at);
 
@@ -112,8 +168,7 @@ const getDashboard = async (req, res) => {
           transactionDate >= startOfDay &&
           transactionDate <= endOfDay
         );
-      }
-    );
+      });
 
     // ======================================
     // RECENT TRANSACTIONS
@@ -126,20 +181,44 @@ const getDashboard = async (req, res) => {
     // RESPONSE
     // ======================================
 
-    res.json({
+    console.log(
+      `⏱️ Dashboard Controller Total: ${
+        Date.now() - startTime
+      }ms`
+    );
+
+    return res.json({
       success: true,
 
+      // Dashboard always visible
       summary: {
-        total_receivable: totalReceivable,
-        total_payable: totalPayable,
+        total_receivable:
+          canViewTransactions
+            ? totalReceivable
+            : 0,
+
+        total_payable:
+          canViewTransactions
+            ? totalPayable
+            : 0,
       },
 
       today: {
-        total_transactions: todayTransactions.length,
-        transactions: todayTransactions,
+        total_transactions:
+          canViewTransactions
+            ? todayTransactions.length
+            : 0,
+
+        transactions:
+          canViewTransactions
+            ? todayTransactions
+            : [],
       },
 
-      recent_transactions: recentTransactions,
+      recent_transactions:
+        canViewTransactions
+          ? recentTransactions
+          : [],
     });
 
   } catch (error) {
@@ -148,12 +227,19 @@ const getDashboard = async (req, res) => {
       error
     );
 
+    console.log(
+      `❌ Dashboard Failed: ${
+        Date.now() - startTime
+      }ms`
+    );
+
     res.status(500).json({
       success: false,
       message: 'Server error',
     });
   }
 };
+
 
 module.exports = {
   getDashboard,

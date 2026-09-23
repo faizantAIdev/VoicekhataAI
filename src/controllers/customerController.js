@@ -1,4 +1,11 @@
+
 const supabase = require('../config/supabase');
+
+const {
+  getBusinessOwnerId,
+  requirePermission,
+} = require('../utils/businessAccess');
+
 
 // ======================================
 // GET ALL CUSTOMERS
@@ -17,19 +24,33 @@ const getCustomers = async (req, res) => {
       });
     }
 
+    // Check view permission
+    await requirePermission(
+      user_id,
+      'can_view_customers'
+    );
+
+    const businessOwnerId = await getBusinessOwnerId(user_id);
+
+    console.log(
+      `👤 User: ${user_id} → Business Owner: ${businessOwnerId}`
+    );
+
     const queryStart = Date.now();
 
     const { data, error } = await supabase
       .from('customers')
       .select('id, user_id, name, mobile, created_at')
-      .eq('user_id', user_id)
+      .eq('user_id', businessOwnerId)
       .order('created_at', {
         ascending: false,
       });
 
     const queryTime = Date.now() - queryStart;
 
-    console.log(`🟢 Customers Supabase Query: ${queryTime}ms`);
+    console.log(
+      `🟢 Customers Supabase Query: ${queryTime}ms`
+    );
 
     if (error) {
       console.error('Supabase Error:', error);
@@ -40,12 +61,13 @@ const getCustomers = async (req, res) => {
       });
     }
 
-    const processingTime = Date.now() - queryStart - queryTime;
+    console.log(
+      `⏱️ Customers Controller Total: ${
+        Date.now() - startTime
+      }ms`
+    );
 
-    console.log(`🟢 Customers Processing: ${processingTime}ms`);
-    console.log(`⏱️ Customers Controller Total: ${Date.now() - startTime}ms`);
-
-    res.json({
+    return res.json({
       success: true,
       customers: data,
     });
@@ -53,9 +75,12 @@ const getCustomers = async (req, res) => {
   } catch (error) {
     console.error('Get Customers Error:', error);
 
-    console.log(
-      `❌ Customers Controller Failed: ${Date.now() - startTime}ms`
-    );
+    if (error.statusCode === 403) {
+      return res.status(403).json({
+        success: false,
+        message: 'You do not have permission to view customers',
+      });
+    }
 
     res.status(500).json({
       success: false,
@@ -63,32 +88,8 @@ const getCustomers = async (req, res) => {
     });
   }
 };
-    // {
-    //   "id": "658f08d1-55e1-454b-9887-b6a7521551c3",
-    //   "user_id": "5ef37967-0ad2-4a27-b149-babf1564c46e",
-    //   "name": "Harpal Bhai Rojiya",
-    //   "mobile": "6464646466",
-    //   "created_at": "2026-09-08T11:24:28.795928+00:00"
-    // },
-// {
-//   "success": true,
-//   "customers": [
-//     {
-//       "id": "658f08d1-55e1-454b-9887-b6a7521551c3",
-//       "user_id": "5ef37967-0ad2-4a27-b149-babf1564c46e",
-//       "name": "Harpal Bhai Rojiya",
-//       "mobile": "6464646466",
-//       "created_at": "2026-09-08T11:24:28.795928+00:00"
-//     },
-//     {
-//       "id": "fa669a68-75ce-4c1a-a8d0-4fdfeebebc31",
-//       "user_id": "5ef37967-0ad2-4a27-b149-babf1564c46e",
-//       "name": "Mendu Bhai Rojiya",
-//       "mobile": "9456976950",
-//       "created_at": "2026-09-08T11:16:14.142984+00:00"
-//     }
-//   ]
-// }
+
+
 // ======================================
 // CREATE CUSTOMER
 // ======================================
@@ -108,19 +109,27 @@ const createCustomer = async (req, res) => {
       });
     }
 
-    if (!name) {
+    if (!name || !name.trim()) {
       return res.status(400).json({
         success: false,
         message: 'Customer name is required',
       });
     }
 
+    // Check manage permission
+    await requirePermission(
+      user_id,
+      'can_manage_customers'
+    );
+
+    const businessOwnerId = await getBusinessOwnerId(user_id);
+
     const { data, error } = await supabase
       .from('customers')
       .insert([
         {
-          user_id,
-          name,
+          user_id: businessOwnerId,
+          name: name.trim(),
           mobile: mobile || null,
         },
       ])
@@ -136,7 +145,7 @@ const createCustomer = async (req, res) => {
       });
     }
 
-    res.status(201).json({
+    return res.status(201).json({
       success: true,
       message: 'Customer created successfully',
       customer: data,
@@ -144,6 +153,13 @@ const createCustomer = async (req, res) => {
 
   } catch (error) {
     console.error('Create Customer Error:', error);
+
+    if (error.statusCode === 403) {
+      return res.status(403).json({
+        success: false,
+        message: 'You do not have permission to manage customers',
+      });
+    }
 
     res.status(500).json({
       success: false,
@@ -160,27 +176,51 @@ const createCustomer = async (req, res) => {
 const getCustomer = async (req, res) => {
   try {
     const { id } = req.params;
+    const { user_id } = req.query;
+
+    if (!user_id) {
+      return res.status(400).json({
+        success: false,
+        message: 'user_id is required',
+      });
+    }
+
+    // Check view permission
+    await requirePermission(
+      user_id,
+      'can_view_customers'
+    );
+
+    const businessOwnerId = await getBusinessOwnerId(user_id);
 
     const { data, error } = await supabase
       .from('customers')
       .select('*')
       .eq('id', id)
+      .eq('user_id', businessOwnerId)
       .single();
 
-    if (error) {
+    if (error || !data) {
       return res.status(404).json({
         success: false,
-        message: error.message,
+        message: 'Customer not found',
       });
     }
 
-    res.json({
+    return res.json({
       success: true,
       customer: data,
     });
 
   } catch (error) {
     console.error('Get Customer Error:', error);
+
+    if (error.statusCode === 403) {
+      return res.status(403).json({
+        success: false,
+        message: 'You do not have permission to view customers',
+      });
+    }
 
     res.status(500).json({
       success: false,
@@ -197,11 +237,52 @@ const getCustomer = async (req, res) => {
 const deleteCustomer = async (req, res) => {
   try {
     const { id } = req.params;
+    const { user_id } = req.body;
+
+    if (!user_id) {
+      return res.status(400).json({
+        success: false,
+        message: 'user_id is required',
+      });
+    }
+
+    // Check manage permission
+    await requirePermission(
+      user_id,
+      'can_manage_customers'
+    );
+
+    const businessOwnerId = await getBusinessOwnerId(user_id);
+
+    const {
+      data: customer,
+      error: customerError,
+    } = await supabase
+      .from('customers')
+      .select('id')
+      .eq('id', id)
+      .eq('user_id', businessOwnerId)
+      .maybeSingle();
+
+    if (customerError) {
+      return res.status(500).json({
+        success: false,
+        message: customerError.message,
+      });
+    }
+
+    if (!customer) {
+      return res.status(404).json({
+        success: false,
+        message: 'Customer not found',
+      });
+    }
 
     const { error } = await supabase
       .from('customers')
       .delete()
-      .eq('id', id);
+      .eq('id', id)
+      .eq('user_id', businessOwnerId);
 
     if (error) {
       return res.status(500).json({
@@ -210,7 +291,7 @@ const deleteCustomer = async (req, res) => {
       });
     }
 
-    res.json({
+    return res.json({
       success: true,
       message: 'Customer deleted successfully',
     });
@@ -218,12 +299,21 @@ const deleteCustomer = async (req, res) => {
   } catch (error) {
     console.error('Delete Customer Error:', error);
 
+    if (error.statusCode === 403) {
+      return res.status(403).json({
+        success: false,
+        message: 'You do not have permission to manage customers',
+      });
+    }
+
     res.status(500).json({
       success: false,
       message: 'Server error',
     });
   }
 };
+
+
 // ======================================
 // UPDATE CUSTOMER
 // ======================================
@@ -231,35 +321,59 @@ const deleteCustomer = async (req, res) => {
 const updateCustomer = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, mobile } = req.body;
 
-    if (!name) {
+    const {
+      user_id,
+      name,
+      mobile,
+    } = req.body;
+
+    if (!user_id) {
+      return res.status(400).json({
+        success: false,
+        message: 'user_id is required',
+      });
+    }
+
+    if (!name || !name.trim()) {
       return res.status(400).json({
         success: false,
         message: 'Customer name is required',
       });
     }
 
-    const { data, error } = await supabase
+    // Check manage permission
+    await requirePermission(
+      user_id,
+      'can_manage_customers'
+    );
+
+    const businessOwnerId = await getBusinessOwnerId(user_id);
+
+    const {
+      data,
+      error,
+    } = await supabase
       .from('customers')
       .update({
-        name,
+        name: name.trim(),
         mobile: mobile || null,
       })
       .eq('id', id)
+      .eq('user_id', businessOwnerId)
       .select()
       .single();
 
-    if (error) {
+    if (error || !data) {
       console.error('Supabase Error:', error);
 
-      return res.status(500).json({
+      return res.status(404).json({
         success: false,
-        message: error.message,
+        message: 'Customer not found',
       });
     }
 
-    res.json({
+    return res.json({
       success: true,
       message: 'Customer updated successfully',
       customer: data,
@@ -268,26 +382,68 @@ const updateCustomer = async (req, res) => {
   } catch (error) {
     console.error('Update Customer Error:', error);
 
+    if (error.statusCode === 403) {
+      return res.status(403).json({
+        success: false,
+        message: 'You do not have permission to manage customers',
+      });
+    }
+
     res.status(500).json({
       success: false,
       message: 'Server error',
     });
   }
 };
+
+
 // ======================================
 // GET CUSTOMER LEDGER
 // ======================================
 
 const getCustomerLedger = async (req, res) => {
+  const startTime = Date.now();
+
   try {
     const { id } = req.params;
+    const { user_id } = req.query;
 
-    // Get customer
-    const { data: customer, error: customerError } = await supabase
+    if (!user_id) {
+      return res.status(400).json({
+        success: false,
+        message: 'user_id is required',
+      });
+    }
+
+    // Check view permission
+    await requirePermission(
+      user_id,
+      'can_view_customers'
+    );
+
+    const businessOwnerId = await getBusinessOwnerId(user_id);
+
+    // ======================================
+    // GET CUSTOMER
+    // ======================================
+
+    const customerStart = Date.now();
+
+    const {
+      data: customer,
+      error: customerError,
+    } = await supabase
       .from('customers')
-      .select('id, name, mobile')
+      .select('id, user_id, name, mobile')
       .eq('id', id)
+      .eq('user_id', businessOwnerId)
       .single();
+
+    console.log(
+      `🟢 Customer Info Query: ${
+        Date.now() - customerStart
+      }ms`
+    );
 
     if (customerError || !customer) {
       return res.status(404).json({
@@ -296,18 +452,34 @@ const getCustomerLedger = async (req, res) => {
       });
     }
 
-    // Get transactions
-    const { data: transactions, error: transactionError } =
-      await supabase
-        .from('transactions')
-        .select('*')
-        .eq('customer_id', id)
-        .order('created_at', {
-          ascending: false,
-        });
+    // ======================================
+    // GET TRANSACTIONS
+    // ======================================
+
+    const transactionStart = Date.now();
+
+    const {
+      data: transactions,
+      error: transactionError,
+    } = await supabase
+      .from('transactions')
+      .select('*')
+      .eq('customer_id', id)
+      .order('created_at', {
+        ascending: false,
+      });
+
+    console.log(
+      `🟢 Customer Transactions Query: ${
+        Date.now() - transactionStart
+      }ms`
+    );
 
     if (transactionError) {
-      console.error('Supabase Error:', transactionError);
+      console.error(
+        'Supabase Error:',
+        transactionError
+      );
 
       return res.status(500).json({
         success: false,
@@ -315,7 +487,10 @@ const getCustomerLedger = async (req, res) => {
       });
     }
 
-    // Calculate balance
+    // ======================================
+    // CALCULATE BALANCE
+    // ======================================
+
     let totalCredit = 0;
     let totalPayment = 0;
 
@@ -333,7 +508,13 @@ const getCustomerLedger = async (req, res) => {
 
     const balance = totalCredit - totalPayment;
 
-    res.json({
+    console.log(
+      `⏱️ Customer Ledger Total: ${
+        Date.now() - startTime
+      }ms`
+    );
+
+    return res.json({
       success: true,
 
       customer: {
@@ -348,11 +529,21 @@ const getCustomerLedger = async (req, res) => {
         balance: balance,
       },
 
-      transactions: transactions,
+      transactions,
     });
 
   } catch (error) {
-    console.error('Get Customer Ledger Error:', error);
+    console.error(
+      'Get Customer Ledger Error:',
+      error
+    );
+
+    if (error.statusCode === 403) {
+      return res.status(403).json({
+        success: false,
+        message: 'You do not have permission to view customers',
+      });
+    }
 
     res.status(500).json({
       success: false,
@@ -360,11 +551,13 @@ const getCustomerLedger = async (req, res) => {
     });
   }
 };
+
+
 module.exports = {
   getCustomers,
   createCustomer,
   getCustomer,
   deleteCustomer,
   updateCustomer,
-  getCustomerLedger
+  getCustomerLedger,
 };

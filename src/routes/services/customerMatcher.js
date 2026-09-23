@@ -1,15 +1,22 @@
 const supabase = require('../../config/supabase');
-const stringSimilarity = require('string-similarity');
 
-// Remove common speech words and normalize spacing/case
+// ==========================================
+// NORMALIZE CUSTOMER NAME
+// ==========================================
+
 const normalizeName = (name) => {
-  return name
+  return String(name ?? '')
     .toLowerCase()
     .trim()
-    .replace(/\b(ji|bhai|sir|madam|mr|mrs|ms)\b/g, '')
+    .replace(/\b(ji|bhai|sir|madam|mr|mrs|ms|customer|grahak)\b/g, ' ')
+    .replace(/[.,/\\()[\]{}'"`_-]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 };
+
+// ==========================================
+// FIND CUSTOMER BY NAME
+// ==========================================
 
 const findCustomerByName = async (userId, personName) => {
   if (!userId || !personName) {
@@ -21,7 +28,17 @@ const findCustomerByName = async (userId, personName) => {
 
   const searchName = normalizeName(personName);
 
-  // Get all customers belonging to this user
+  if (!searchName) {
+    return {
+      status: 'not_found',
+      customer: null,
+    };
+  }
+
+  // ==========================================
+  // GET ALL CUSTOMERS FOR THIS USER
+  // ==========================================
+
   const { data: customers, error } = await supabase
     .from('customers')
     .select('id, name, mobile')
@@ -43,85 +60,86 @@ const findCustomerByName = async (userId, personName) => {
   // 1. EXACT NORMALIZED MATCH
   // ==========================================
 
-  const exactMatch = customers.find((customer) => {
+  const exactMatches = customers.filter((customer) => {
     return normalizeName(customer.name) === searchName;
   });
 
-  if (exactMatch) {
+  if (exactMatches.length === 1) {
     return {
       status: 'matched',
-      customer: exactMatch,
+      customer: exactMatches[0],
+      confidence: 1,
+    };
+  }
+
+  if (exactMatches.length > 1) {
+    return {
+      status: 'multiple_matches',
+      customers: exactMatches,
       confidence: 1,
     };
   }
 
   // ==========================================
-  // 2. PARTIAL MATCH
+  // 2. CONTROLLED TOKEN MATCH
+  // ==========================================
+  // Example:
+  //
+  // Search: "Rahul Sharma"
+  // DB:     "Rahul Sharma Traders"
+  //
+  // All search tokens must exist in DB name.
+  //
+  // This is safer than generic partial matching.
   // ==========================================
 
-  const partialMatches = customers.filter((customer) => {
+  const searchTokens = searchName
+    .split(' ')
+    .filter(Boolean);
+
+  const controlledMatches = customers.filter((customer) => {
     const dbName = normalizeName(customer.name);
 
-    return (
-      dbName.includes(searchName) ||
-      searchName.includes(dbName)
+    const dbTokens = dbName
+      .split(' ')
+      .filter(Boolean);
+
+    return searchTokens.every((token) =>
+      dbTokens.includes(token)
     );
   });
 
-  if (partialMatches.length === 1) {
+  if (controlledMatches.length === 1) {
     return {
       status: 'matched',
-      customer: partialMatches[0],
-      confidence: 0.9,
+      customer: controlledMatches[0],
+      confidence: 0.95,
     };
   }
 
-  if (partialMatches.length > 1) {
+  if (controlledMatches.length > 1) {
     return {
       status: 'multiple_matches',
-      customers: partialMatches,
+      customers: controlledMatches,
+      confidence: 0.9,
     };
   }
 
   // ==========================================
   // 3. FUZZY MATCH
   // ==========================================
+  //
+  // IMPORTANT:
+  // DO NOT automatically select a customer
+  // using fuzzy similarity.
+  //
+  // A similar name can belong to another person.
+  //
+  // If you want fuzzy suggestions, return
+  // possible_match and let the clarification
+  // flow ask the user.
+  // ==========================================
 
-  const matches = customers
-    .map((customer) => {
-      const dbName = normalizeName(customer.name);
-
-      return {
-        customer,
-        score: stringSimilarity.compareTwoStrings(
-          searchName,
-          dbName
-        ),
-      };
-    })
-    .sort((a, b) => b.score - a.score);
-
-  const bestMatch = matches[0];
-
-  // Strong match
-  if (bestMatch && bestMatch.score >= 0.75) {
-    return {
-      status: 'matched',
-      customer: bestMatch.customer,
-      confidence: bestMatch.score,
-    };
-  }
-
-  // Possible match — ask user
-  if (bestMatch && bestMatch.score >= 0.55) {
-    return {
-      status: 'possible_match',
-      customer: bestMatch.customer,
-      confidence: bestMatch.score,
-    };
-  }
-
-  // No useful match
   return {
     status: 'not_found',
     customer: null,

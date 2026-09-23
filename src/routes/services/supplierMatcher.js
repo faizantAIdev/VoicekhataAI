@@ -1,5 +1,4 @@
 const supabase = require('../../config/supabase');
-const stringSimilarity = require('string-similarity');
 
 
 // =====================================================
@@ -7,13 +6,14 @@ const stringSimilarity = require('string-similarity');
 // =====================================================
 
 const normalizeName = (name) => {
-  return name
+  return String(name ?? '')
     .toLowerCase()
     .trim()
     .replace(
       /\b(ji|bhai|sir|madam|mr|mrs|ms|supplier|vendor)\b/g,
-      ''
+      ' '
     )
+    .replace(/[.,/\\()[\]{}'"`_-]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 };
@@ -36,8 +36,15 @@ const findSupplierByName = async (
   }
 
 
-  const searchName =
-    normalizeName(personName);
+  const searchName = normalizeName(personName);
+
+
+  if (!searchName) {
+    return {
+      status: 'not_found',
+      supplier: null,
+    };
+  }
 
 
   // ===================================================
@@ -74,11 +81,11 @@ const findSupplierByName = async (
 
 
   // ===================================================
-  // EXACT MATCH
+  // 1. EXACT NORMALIZED MATCH
   // ===================================================
 
-  const exactMatch =
-    suppliers.find((supplier) => {
+  const exactMatches =
+    suppliers.filter((supplier) => {
 
       return (
         normalizeName(supplier.name) ===
@@ -88,120 +95,111 @@ const findSupplierByName = async (
     });
 
 
-  if (exactMatch) {
+  if (exactMatches.length === 1) {
 
     return {
       status: 'matched',
-      supplier: exactMatch,
+      supplier: exactMatches[0],
+      confidence: 1,
+    };
+  }
+
+
+  if (exactMatches.length > 1) {
+
+    return {
+      status: 'multiple_matches',
+      suppliers: exactMatches,
       confidence: 1,
     };
   }
 
 
   // ===================================================
-  // PARTIAL MATCH
+  // 2. CONTROLLED TOKEN MATCH
+  // ===================================================
+  //
+  // Example:
+  //
+  // User says:
+  // "NK Traders"
+  //
+  // Database:
+  // "NK Traders Pvt Ltd"
+  //
+  // Result:
+  // MATCH
+  //
+  // But:
+  //
+  // "NK Traders"
+  // "Paras Trader"
+  //
+  // Result:
+  // NOT FOUND
+  //
+  // This prevents dangerous fuzzy matching.
   // ===================================================
 
-  const partialMatches =
+  const searchTokens =
+    searchName
+      .split(' ')
+      .filter(Boolean);
+
+
+  const controlledMatches =
     suppliers.filter((supplier) => {
 
       const dbName =
         normalizeName(supplier.name);
 
-      return (
-        dbName.includes(searchName) ||
-        searchName.includes(dbName)
+      const dbTokens =
+        dbName
+          .split(' ')
+          .filter(Boolean);
+
+
+      return searchTokens.every((token) =>
+        dbTokens.includes(token)
       );
 
     });
 
 
-  if (partialMatches.length === 1) {
+  if (controlledMatches.length === 1) {
 
     return {
       status: 'matched',
-      supplier: partialMatches[0],
+      supplier: controlledMatches[0],
+      confidence: 0.95,
+    };
+  }
+
+
+  if (controlledMatches.length > 1) {
+
+    return {
+      status: 'multiple_matches',
+      suppliers: controlledMatches,
       confidence: 0.9,
     };
   }
 
 
-  if (partialMatches.length > 1) {
-
-    return {
-      status: 'multiple_matches',
-      suppliers: partialMatches,
-    };
-  }
-
-
   // ===================================================
-  // FUZZY MATCH
+  // 3. NO AUTOMATIC FUZZY MATCH
   // ===================================================
-
-  const matches =
-    suppliers
-      .map((supplier) => {
-
-        const dbName =
-          normalizeName(supplier.name);
-
-        return {
-          supplier,
-
-          score:
-            stringSimilarity.compareTwoStrings(
-              searchName,
-              dbName
-            ),
-        };
-
-      })
-      .sort(
-        (a, b) =>
-          b.score - a.score
-      );
-
-
-  const bestMatch = matches[0];
-
-
-  // ===================================================
-  // STRONG MATCH
-  // ===================================================
-
-  if (
-    bestMatch &&
-    bestMatch.score >= 0.75
-  ) {
-
-    return {
-      status: 'matched',
-      supplier: bestMatch.supplier,
-      confidence: bestMatch.score,
-    };
-  }
-
-
-  // ===================================================
-  // POSSIBLE MATCH
-  // ===================================================
-
-  if (
-    bestMatch &&
-    bestMatch.score >= 0.55
-  ) {
-
-    return {
-      status: 'possible_match',
-      supplier: bestMatch.supplier,
-      confidence: bestMatch.score,
-    };
-  }
-
-
-  // ===================================================
-  // NOT FOUND
+  //
+  // IMPORTANT:
+  //
+  // Do NOT do:
+  //
+  // NK Traders -> Paras Trader
+  //
+  // just because string similarity is high.
+  //
+  // Financial transactions must never be assigned
+  // to another supplier based only on fuzzy similarity.
   // ===================================================
 
   return {
@@ -210,6 +208,10 @@ const findSupplierByName = async (
   };
 };
 
+
+// =====================================================
+// EXPORT
+// =====================================================
 
 module.exports = {
   findSupplierByName,
