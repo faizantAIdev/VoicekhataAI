@@ -671,10 +671,13 @@ const groq = new Groq({
 
 
 // =====================================================
-// AUDIO UPLOAD
+// AUDIO UPLOAD DIRECTORY
 // =====================================================
 
-const uploadDir = path.join(__dirname, '../tmp');
+const uploadDir = path.join(
+  __dirname,
+  '../tmp'
+);
 
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, {
@@ -682,12 +685,79 @@ if (!fs.existsSync(uploadDir)) {
   });
 }
 
+
+// =====================================================
+// MULTER STORAGE
+// IMPORTANT:
+// Preserve .m4a / original audio extension.
+// =====================================================
+
+const storage = multer.diskStorage({
+
+  destination: (req, file, cb) => {
+    cb(null, uploadDir);
+  },
+
+  filename: (req, file, cb) => {
+
+    const originalExtension =
+      path.extname(
+        file.originalname || ''
+      );
+
+    const extension =
+      originalExtension || '.m4a';
+
+    const uniqueName =
+      `voice-${Date.now()}-${Math.random()
+        .toString(36)
+        .substring(2, 10)}${extension}`;
+
+    cb(
+      null,
+      uniqueName
+    );
+  },
+
+});
+
+
+// =====================================================
+// MULTER
+// =====================================================
+
 const upload = multer({
-  dest: uploadDir,
+
+  storage,
 
   limits: {
-    fileSize: 25 * 1024 * 1024, // 25 MB
+    fileSize:
+      25 * 1024 * 1024,
   },
+
+  fileFilter: (
+    req,
+    file,
+    cb
+  ) => {
+
+    console.log(
+      '🎵 Uploaded audio:',
+      {
+        originalname:
+          file.originalname,
+
+        mimetype:
+          file.mimetype,
+      }
+    );
+
+    cb(
+      null,
+      true
+    );
+  },
+
 });
 
 
@@ -699,24 +769,57 @@ router.post(
   '/transcribe',
   upload.single('audio'),
   async (req, res) => {
+
     let filePath = null;
 
     try {
+
       const {
         user_id,
         language,
       } = req.body;
+
+
+      // ======================================
+      // LOG
+      // ======================================
+
+      console.log('');
+      console.log(
+        '===================================='
+      );
+      console.log(
+        '🎤 VOICE TRANSCRIPTION'
+      );
+      console.log(
+        '===================================='
+      );
+
+      console.log(
+        'User ID:',
+        user_id
+      );
+
+      console.log(
+        'Language:',
+        language
+      );
+
 
       // ======================================
       // USER CHECK
       // ======================================
 
       if (!user_id) {
+
         return res.status(400).json({
           success: false,
-          message: 'user_id is required',
+          message:
+            'user_id is required',
         });
+
       }
+
 
       // ======================================
       // VOICE PERMISSION
@@ -727,28 +830,73 @@ router.post(
         'can_use_voice'
       );
 
+
       // ======================================
       // AUDIO CHECK
       // ======================================
 
       if (!req.file) {
+
         return res.status(400).json({
           success: false,
-          message: 'Audio file is required',
+          message:
+            'Audio file is required',
         });
+
       }
 
-      filePath = req.file.path;
 
-      console.log('');
-      console.log('====================================');
-      console.log('🎤 VOICE TRANSCRIPTION');
-      console.log('====================================');
-      console.log('User ID:', user_id);
-      console.log('Original file:', req.file.originalname);
-      console.log('Mimetype:', req.file.mimetype);
-      console.log('Size:', req.file.size);
-      console.log('File path:', filePath);
+      // ======================================
+      // FILE PATH
+      // ======================================
+
+      filePath =
+        req.file.path;
+
+
+      console.log(
+        '📁 Original file:',
+        req.file.originalname
+      );
+
+      console.log(
+        '📁 Saved file:',
+        req.file.filename
+      );
+
+      console.log(
+        '📁 MIME type:',
+        req.file.mimetype
+      );
+
+      console.log(
+        '📁 Size:',
+        req.file.size
+      );
+
+      console.log(
+        '📁 File path:',
+        filePath
+      );
+
+
+      // ======================================
+      // FILE EXISTS CHECK
+      // ======================================
+
+      if (
+        !fs.existsSync(
+          filePath
+        )
+      ) {
+
+        return res.status(500).json({
+          success: false,
+          message:
+            'Uploaded audio file was not found',
+        });
+
+      }
 
 
       // ======================================
@@ -758,14 +906,19 @@ router.post(
       let sttLanguage = null;
 
       if (language) {
-        sttLanguage = String(language)
-          .split('-')[0]
-          .toLowerCase();
+
+        sttLanguage =
+          String(language)
+            .split('-')[0]
+            .toLowerCase();
+
       }
+
 
       console.log(
         '🌐 STT Language:',
-        sttLanguage || 'auto-detect'
+        sttLanguage ||
+          'auto-detect'
       );
 
 
@@ -773,18 +926,35 @@ router.post(
       // GROQ WHISPER
       // ======================================
 
+      console.log(
+        '🎙️ Sending audio to Groq Whisper...'
+      );
+
+
       const transcription =
         await groq.audio.transcriptions.create({
 
-          file: fs.createReadStream(filePath),
+          /*
+           * IMPORTANT:
+           * Because Multer now preserves
+           * the .m4a extension, Groq can
+           * correctly identify the format.
+           */
+          file:
+            fs.createReadStream(
+              filePath
+            ),
 
-          model: 'whisper-large-v3',
+          model:
+            'whisper-large-v3',
 
-          response_format: 'json',
+          response_format:
+            'json',
 
           ...(sttLanguage
             ? {
-                language: sttLanguage,
+                language:
+                  sttLanguage,
               }
             : {}),
 
@@ -792,12 +962,26 @@ router.post(
 
           prompt:
             'Indian business transaction voice input. ' +
-            'Understand Hindi, Hinglish, Roman Hindi, Gujarati, Marathi, Bengali, Tamil, Telugu, Kannada, Malayalam and Indian English. ' +
+
+            'Understand Hindi, Hinglish, Roman Hindi, ' +
+            'Gujarati, Marathi, Bengali, Tamil, Telugu, ' +
+            'Kannada, Malayalam and Indian English. ' +
+
             'Users may speak in mixed Hindi and English. ' +
-            'Preserve customer names, supplier names and shop/business names exactly. ' +
-            'Examples of names include NK Traders, Paras Medical, Rahul, Suresh, Ramesh, Rakesh Traders. ' +
+
+            'Preserve customer names, supplier names, ' +
+            'shop names and business names accurately. ' +
+
+            'Examples include NK Traders, Paras Medical, ' +
+            'Rahul, Suresh, Ramesh, Rakesh Traders, ' +
+            'New Star Medical and Khan General Store. ' +
+
             'Preserve numbers and Indian currency amounts accurately. ' +
-            'Common phrases include rupaye, rupees, hazaar, lakh, dena hai, lena hai, maal liya, payment diya, payment mila, baaki, udhaar.',
+
+            'Common phrases include rupaye, rupees, hazaar, lakh, ' +
+            'dena hai, lena hai, maal liya, payment diya, ' +
+            'payment mila, baaki, udhaar, jama, receive and credit.',
+
         });
 
 
@@ -806,11 +990,17 @@ router.post(
       // ======================================
 
       const text =
-        transcription?.text?.trim() || '';
+        transcription?.text
+          ?.trim() || '';
 
 
-      console.log('📝 TRANSCRIBED TEXT:');
-      console.log(text);
+      console.log(
+        '📝 TRANSCRIBED TEXT:'
+      );
+
+      console.log(
+        text
+      );
 
 
       // ======================================
@@ -818,10 +1008,13 @@ router.post(
       // ======================================
 
       if (!text) {
+
         return res.status(400).json({
           success: false,
-          message: 'Could not understand the audio',
+          message:
+            'Could not understand the audio',
         });
+
       }
 
 
@@ -830,55 +1023,103 @@ router.post(
       // ======================================
 
       return res.json({
+
         success: true,
+
         text,
-        language: sttLanguage || null,
+
+        language:
+          sttLanguage || null,
+
       });
 
     } catch (error) {
 
       console.error('');
-      console.error('====================================');
-      console.error('❌ VOICE TRANSCRIPTION ERROR');
-      console.error('====================================');
-      console.error(error);
+
+      console.error(
+        '===================================='
+      );
+
+      console.error(
+        '❌ VOICE TRANSCRIPTION ERROR'
+      );
+
+      console.error(
+        '===================================='
+      );
+
+      console.error(
+        error
+      );
 
 
-      if (error.statusCode === 403) {
+      // ======================================
+      // PERMISSION ERROR
+      // ======================================
+
+      if (
+        error.statusCode === 403
+      ) {
+
         return res.status(403).json({
+
           success: false,
+
           message:
             'You do not have permission to use voice',
+
         });
+
       }
 
 
+      // ======================================
+      // GROQ ERROR
+      // ======================================
+
       return res.status(500).json({
+
         success: false,
+
         message:
           'Failed to transcribe voice input',
-        error: error.message,
+
+        error:
+          error?.message ||
+          'Unknown transcription error',
+
       });
 
     } finally {
 
       // ======================================
-      // DELETE TEMP AUDIO FILE
+      // DELETE TEMP AUDIO
       // ======================================
 
       if (filePath) {
 
         try {
 
-          if (fs.existsSync(filePath)) {
-            fs.unlinkSync(filePath);
+          if (
+            fs.existsSync(
+              filePath
+            )
+          ) {
+
+            fs.unlinkSync(
+              filePath
+            );
 
             console.log(
               '🗑️ Temporary audio deleted'
             );
+
           }
 
-        } catch (deleteError) {
+        } catch (
+          deleteError
+        ) {
 
           console.error(
             '⚠️ Failed to delete temporary audio:',
@@ -886,8 +1127,11 @@ router.post(
           );
 
         }
+
       }
+
     }
+
   }
 );
 
@@ -896,766 +1140,983 @@ router.post(
 // POST /api/voice/parse
 // =====================================================
 
-router.post('/parse', async (req, res) => {
+router.post(
+  '/parse',
+  async (req, res) => {
 
-  try {
+    try {
 
-    const {
-      text,
-      user_id,
-    } = req.body;
-
-
-    if (!text || !user_id) {
-
-      return res.status(400).json({
-        success: false,
-        message:
-          'text and user_id are required',
-      });
-
-    }
+      const {
+        text,
+        user_id,
+      } = req.body;
 
 
-    // ======================================
-    // VOICE PERMISSION
-    // ======================================
+      // ======================================
+      // VALIDATION
+      // ======================================
 
-    await requirePermission(
-      user_id,
-      'can_use_voice'
-    );
+      if (
+        !text ||
+        !user_id
+      ) {
 
+        return res.status(400).json({
 
-    const businessOwnerId =
-      await getBusinessOwnerId(user_id);
+          success: false,
 
+          message:
+            'text and user_id are required',
 
-    console.log('🎤 Voice Parse');
-    console.log('User ID:', user_id);
-    console.log(
-      'Business Owner ID:',
-      businessOwnerId
-    );
+        });
 
-
-    // ======================================
-    // AI PARSER
-    // ======================================
-
-    const parsed =
-      await parseVoiceText(text);
+      }
 
 
-    console.log(
-      '🤖 Parsed:',
-      parsed
-    );
+      // ======================================
+      // VOICE PERMISSION
+      // ======================================
+
+      await requirePermission(
+        user_id,
+        'can_use_voice'
+      );
 
 
-    // ======================================
-    // CLARIFICATION REQUIRED
-    // ======================================
+      // ======================================
+      // BUSINESS OWNER
+      // ======================================
 
-    if (parsed.needs_clarification) {
-
-      return res.json({
-
-        success: true,
-
-        needs_clarification: true,
-
-        question:
-          parsed.clarification_question,
-
-        transaction: parsed,
-
-      });
-
-    }
-
-
-    // ======================================
-    // VALIDATION
-    // ======================================
-
-    if (!parsed.account_type) {
-
-      return res.status(400).json({
-        success: false,
-        message:
-          'Account type could not be detected',
-      });
-
-    }
-
-
-    if (!parsed.intent) {
-
-      return res.status(400).json({
-        success: false,
-        message:
-          'Transaction intent could not be detected',
-      });
-
-    }
-
-
-    if (!parsed.person_name) {
-
-      return res.status(400).json({
-        success: false,
-        message:
-          'Person name could not be detected',
-      });
-
-    }
-
-
-    if (
-      parsed.amount === null ||
-      parsed.amount === undefined ||
-      Number(parsed.amount) <= 0
-    ) {
-
-      return res.status(400).json({
-        success: false,
-        message:
-          'Valid amount could not be detected',
-      });
-
-    }
-
-
-    // ======================================
-    // SUPPLIER
-    // ======================================
-
-    if (
-      parsed.account_type === 'supplier'
-    ) {
-
-      const match =
-        await findSupplierByName(
-          businessOwnerId,
-          parsed.person_name
+      const businessOwnerId =
+        await getBusinessOwnerId(
+          user_id
         );
 
 
       console.log(
-        '🏪 Supplier Match:',
-        match
+        '🎤 Voice Parse'
+      );
+
+      console.log(
+        'User ID:',
+        user_id
+      );
+
+      console.log(
+        'Business Owner ID:',
+        businessOwnerId
       );
 
 
-      return res.json({
+      // ======================================
+      // AI PARSER
+      // ======================================
 
-        success: true,
-
-        needs_clarification: false,
-
-        transaction: {
-          ...parsed,
-          user_id: businessOwnerId,
-        },
-
-        match,
-
-      });
-
-    }
-
-
-    // ======================================
-    // CUSTOMER
-    // ======================================
-
-    if (
-      parsed.account_type === 'customer'
-    ) {
-
-      const match =
-        await findCustomerByName(
-          businessOwnerId,
-          parsed.person_name
+      const parsed =
+        await parseVoiceText(
+          text
         );
 
 
       console.log(
-        '👤 Customer Match:',
-        match
+        '🤖 Parsed:',
+        parsed
       );
 
 
-      return res.json({
+      // ======================================
+      // CLARIFICATION REQUIRED
+      // ======================================
 
-        success: true,
+      if (
+        parsed.needs_clarification
+      ) {
 
-        needs_clarification: false,
+        return res.json({
 
-        transaction: {
-          ...parsed,
-          user_id: businessOwnerId,
-        },
+          success: true,
 
-        match,
+          needs_clarification:
+            true,
 
-      });
+          question:
+            parsed.clarification_question,
 
-    }
+          transaction:
+            parsed,
 
+        });
 
-    return res.status(400).json({
-
-      success: false,
-
-      message:
-        'Invalid account type',
-
-    });
+      }
 
 
-  } catch (error) {
+      // ======================================
+      // VALIDATION
+      // ======================================
 
-    console.error(
-      '❌ Voice Parse Error:',
-      error
-    );
+      if (
+        !parsed.account_type
+      ) {
+
+        return res.status(400).json({
+
+          success: false,
+
+          message:
+            'Account type could not be detected',
+
+        });
+
+      }
 
 
-    if (error.statusCode === 403) {
+      if (
+        !parsed.intent
+      ) {
 
-      return res.status(403).json({
+        return res.status(400).json({
+
+          success: false,
+
+          message:
+            'Transaction intent could not be detected',
+
+        });
+
+      }
+
+
+      if (
+        !parsed.person_name
+      ) {
+
+        return res.status(400).json({
+
+          success: false,
+
+          message:
+            'Person name could not be detected',
+
+        });
+
+      }
+
+
+      if (
+        parsed.amount === null ||
+        parsed.amount === undefined ||
+        Number(parsed.amount) <= 0
+      ) {
+
+        return res.status(400).json({
+
+          success: false,
+
+          message:
+            'Valid amount could not be detected',
+
+        });
+
+      }
+
+
+      // ======================================
+      // SUPPLIER
+      // ======================================
+
+      if (
+        parsed.account_type ===
+        'supplier'
+      ) {
+
+        const match =
+          await findSupplierByName(
+            businessOwnerId,
+            parsed.person_name
+          );
+
+
+        console.log(
+          '🏪 Supplier Match:',
+          match
+        );
+
+
+        return res.json({
+
+          success: true,
+
+          needs_clarification:
+            false,
+
+          transaction: {
+
+            ...parsed,
+
+            user_id:
+              businessOwnerId,
+
+          },
+
+          match,
+
+        });
+
+      }
+
+
+      // ======================================
+      // CUSTOMER
+      // ======================================
+
+      if (
+        parsed.account_type ===
+        'customer'
+      ) {
+
+        const match =
+          await findCustomerByName(
+            businessOwnerId,
+            parsed.person_name
+          );
+
+
+        console.log(
+          '👤 Customer Match:',
+          match
+        );
+
+
+        return res.json({
+
+          success: true,
+
+          needs_clarification:
+            false,
+
+          transaction: {
+
+            ...parsed,
+
+            user_id:
+              businessOwnerId,
+
+          },
+
+          match,
+
+        });
+
+      }
+
+
+      // ======================================
+      // INVALID ACCOUNT
+      // ======================================
+
+      return res.status(400).json({
 
         success: false,
 
         message:
-          'You do not have permission to use voice',
+          'Invalid account type',
+
+      });
+
+
+    } catch (error) {
+
+      console.error(
+        '❌ Voice Parse Error:',
+        error
+      );
+
+
+      if (
+        error.statusCode === 403
+      ) {
+
+        return res.status(403).json({
+
+          success: false,
+
+          message:
+            'You do not have permission to use voice',
+
+        });
+
+      }
+
+
+      return res.status(500).json({
+
+        success: false,
+
+        message:
+          'Failed to parse voice input',
+
+        error:
+          error.message,
 
       });
 
     }
-
-
-    return res.status(500).json({
-
-      success: false,
-
-      message:
-        'Failed to parse voice input',
-
-      error:
-        error.message,
-
-    });
 
   }
-
-});
+);
 
 
 // =====================================================
 // POST /api/voice/confirm
 // =====================================================
 
-router.post('/confirm', async (req, res) => {
+router.post(
+  '/confirm',
+  async (req, res) => {
 
-  try {
+    try {
 
-    const {
-      user_id,
-      account_type,
-      customer_id,
-      customer_name,
-      supplier_id,
-      supplier_name,
-      intent,
-      amount,
-      note,
-      mobile,
-    } = req.body;
-
-
-    if (!user_id) {
-
-      return res.status(400).json({
-        success: false,
-        message:
-          'user_id is required',
-      });
-
-    }
-
-
-    // ======================================
-    // VOICE PERMISSION
-    // ======================================
-
-    await requirePermission(
-      user_id,
-      'can_use_voice'
-    );
-
-
-    // ======================================
-    // TRANSACTION PERMISSION
-    // ======================================
-
-    await requirePermission(
-      user_id,
-      'can_create_transactions'
-    );
-
-
-    if (!account_type) {
-
-      return res.status(400).json({
-        success: false,
-        message:
-          'account_type is required',
-      });
-
-    }
-
-
-    if (!intent) {
-
-      return res.status(400).json({
-        success: false,
-        message:
-          'intent is required',
-      });
-
-    }
-
-
-    if (
-      amount === undefined ||
-      amount === null ||
-      Number(amount) <= 0
-    ) {
-
-      return res.status(400).json({
-        success: false,
-        message:
-          'Valid amount is required',
-      });
-
-    }
-
-
-    const businessOwnerId =
-      await getBusinessOwnerId(user_id);
-
-
-    console.log('✅ Voice Confirm');
-    console.log('User ID:', user_id);
-    console.log(
-      'Business Owner ID:',
-      businessOwnerId
-    );
-
-
-    // =================================================
-    // CUSTOMER
-    // =================================================
-
-    if (account_type === 'customer') {
-
-      let customer = null;
+      const {
+        user_id,
+        account_type,
+        customer_id,
+        customer_name,
+        supplier_id,
+        supplier_name,
+        intent,
+        amount,
+        note,
+        mobile,
+      } = req.body;
 
 
       // ======================================
-      // FIND BY ID
+      // USER CHECK
       // ======================================
 
-      if (customer_id) {
+      if (!user_id) {
 
-        const {
-          data,
-          error,
-        } = await supabase
+        return res.status(400).json({
 
-          .from('customers')
+          success: false,
 
-          .select(
-            'id, user_id, name, mobile'
-          )
+          message:
+            'user_id is required',
 
-          .eq(
-            'id',
-            customer_id
-          )
+        });
 
-          .eq(
-            'user_id',
-            businessOwnerId
-          )
-
-          .single();
-
-
-        if (
-          error &&
-          error.code !== 'PGRST116'
-        ) {
-          throw error;
-        }
-
-
-        customer = data;
       }
 
 
       // ======================================
-      // FIND BY NAME
+      // VOICE PERMISSION
+      // ======================================
+
+      await requirePermission(
+        user_id,
+        'can_use_voice'
+      );
+
+
+      // ======================================
+      // TRANSACTION PERMISSION
+      // ======================================
+
+      await requirePermission(
+        user_id,
+        'can_create_transactions'
+      );
+
+
+      // ======================================
+      // ACCOUNT TYPE
+      // ======================================
+
+      if (!account_type) {
+
+        return res.status(400).json({
+
+          success: false,
+
+          message:
+            'account_type is required',
+
+        });
+
+      }
+
+
+      // ======================================
+      // INTENT
+      // ======================================
+
+      if (!intent) {
+
+        return res.status(400).json({
+
+          success: false,
+
+          message:
+            'intent is required',
+
+        });
+
+      }
+
+
+      // ======================================
+      // AMOUNT
       // ======================================
 
       if (
-        !customer &&
-        customer_name
+        amount === undefined ||
+        amount === null ||
+        Number(amount) <= 0
       ) {
 
-        const match =
-          await findCustomerByName(
-            businessOwnerId,
-            customer_name
-          );
+        return res.status(400).json({
+
+          success: false,
+
+          message:
+            'Valid amount is required',
+
+        });
+
+      }
 
 
-        if (
-          match &&
-          match.customer
-        ) {
+      // ======================================
+      // BUSINESS OWNER
+      // ======================================
+
+      const businessOwnerId =
+        await getBusinessOwnerId(
+          user_id
+        );
+
+
+      console.log(
+        '✅ Voice Confirm'
+      );
+
+      console.log(
+        'User ID:',
+        user_id
+      );
+
+      console.log(
+        'Business Owner ID:',
+        businessOwnerId
+      );
+
+
+      // =================================================
+      // CUSTOMER
+      // =================================================
+
+      if (
+        account_type ===
+        'customer'
+      ) {
+
+        let customer = null;
+
+
+        // ======================================
+        // FIND CUSTOMER BY ID
+        // ======================================
+
+        if (customer_id) {
+
+          const {
+            data,
+            error,
+          } = await supabase
+
+            .from('customers')
+
+            .select(
+              'id, user_id, name, mobile'
+            )
+
+            .eq(
+              'id',
+              customer_id
+            )
+
+            .eq(
+              'user_id',
+              businessOwnerId
+            )
+
+            .single();
+
+
+          if (
+            error &&
+            error.code !==
+              'PGRST116'
+          ) {
+
+            throw error;
+
+          }
+
 
           customer =
-            match.customer;
-
-        } else if (
-          match &&
-          match.id
-        ) {
-
-          customer = match;
+            data;
 
         }
 
-      }
 
-
-      // ======================================
-      // CREATE CUSTOMER
-      // ======================================
-
-      if (!customer) {
-
-        const {
-          data,
-          error,
-        } = await supabase
-
-          .from('customers')
-
-          .insert([
-            {
-              user_id:
-                businessOwnerId,
-
-              name:
-                customer_name,
-
-              mobile:
-                mobile || null,
-            },
-          ])
-
-          .select(
-            'id, user_id, name, mobile'
-          )
-
-          .single();
-
-
-        if (error) {
-          throw error;
-        }
-
-
-        customer = data;
-
-
-        console.log(
-          '👤 New Customer Created:',
-          customer.id
-        );
-
-      }
-
-
-      // ======================================
-      // TRANSACTION TYPE
-      // ======================================
-
-      let transactionType;
-
-
-      if (
-        intent === 'credit_given'
-      ) {
-
-        transactionType =
-          'credit';
-
-      } else if (
-        intent === 'payment_received'
-      ) {
-
-        transactionType =
-          'payment';
-
-      } else {
-
-        return res.status(400).json({
-
-          success: false,
-
-          message:
-            'Invalid customer transaction intent',
-
-        });
-
-      }
-
-
-      // ======================================
-      // INSERT TRANSACTION
-      // ======================================
-
-      const {
-        data: transaction,
-        error: transactionError,
-      } = await supabase
-
-        .from('transactions')
-
-        .insert([
-          {
-            user_id:
-              businessOwnerId,
-
-            customer_id:
-              customer.id,
-
-            type:
-              transactionType,
-
-            amount:
-              Number(amount),
-
-            description:
-              note || null,
-          },
-        ])
-
-        .select()
-
-        .single();
-
-
-      if (transactionError) {
-        throw transactionError;
-      }
-
-
-      console.log(
-        '💰 Customer Transaction Created:',
-        transaction.id
-      );
-
-
-      return res.json({
-
-        success: true,
-
-        message:
-          'Customer transaction created successfully',
-
-        transaction,
-
-        customer,
-
-      });
-
-    }
-
-
-    // =================================================
-    // SUPPLIER
-    // =================================================
-
-    if (account_type === 'supplier') {
-
-      let supplier = null;
-
-
-      // ======================================
-      // FIND BY ID
-      // ======================================
-
-      if (supplier_id) {
-
-        const {
-          data,
-          error,
-        } = await supabase
-
-          .from('suppliers')
-
-          .select(
-            'id, user_id, name, mobile'
-          )
-
-          .eq(
-            'id',
-            supplier_id
-          )
-
-          .eq(
-            'user_id',
-            businessOwnerId
-          )
-
-          .single();
-
+        // ======================================
+        // FIND CUSTOMER BY NAME
+        // ======================================
 
         if (
-          error &&
-          error.code !== 'PGRST116'
+          !customer &&
+          customer_name
         ) {
-          throw error;
+
+          const match =
+            await findCustomerByName(
+              businessOwnerId,
+              customer_name
+            );
+
+
+          if (
+            match &&
+            match.customer
+          ) {
+
+            customer =
+              match.customer;
+
+          } else if (
+            match &&
+            match.id
+          ) {
+
+            customer =
+              match;
+
+          }
+
         }
 
 
-        supplier = data;
-      }
+        // ======================================
+        // CREATE CUSTOMER
+        // ======================================
+
+        if (!customer) {
+
+          const {
+            data,
+            error,
+          } = await supabase
+
+            .from('customers')
+
+            .insert([
+              {
+
+                user_id:
+                  businessOwnerId,
+
+                name:
+                  customer_name,
+
+                mobile:
+                  mobile ||
+                  null,
+
+              },
+            ])
+
+            .select(
+              'id, user_id, name, mobile'
+            )
+
+            .single();
 
 
-      // ======================================
-      // FIND BY NAME
-      // ======================================
+          if (error) {
+            throw error;
+          }
 
-      if (
-        !supplier &&
-        supplier_name
-      ) {
 
-        const match =
-          await findSupplierByName(
-            businessOwnerId,
-            supplier_name
+          customer =
+            data;
+
+
+          console.log(
+            '👤 New Customer Created:',
+            customer.id
           );
 
+        }
+
+
+        // ======================================
+        // TRANSACTION TYPE
+        // ======================================
+
+        let transactionType;
+
 
         if (
-          match &&
-          match.supplier
+          intent ===
+          'credit_given'
         ) {
 
-          supplier =
-            match.supplier;
+          transactionType =
+            'credit';
 
         } else if (
-          match &&
-          match.id
+          intent ===
+          'payment_received'
         ) {
 
-          supplier = match;
+          transactionType =
+            'payment';
+
+        } else {
+
+          return res.status(400).json({
+
+            success: false,
+
+            message:
+              'Invalid customer transaction intent',
+
+          });
 
         }
 
-      }
 
-
-      // ======================================
-      // CREATE SUPPLIER
-      // ======================================
-
-      if (!supplier) {
+        // ======================================
+        // INSERT TRANSACTION
+        // ======================================
 
         const {
-          data,
-          error,
+          data: transaction,
+          error:
+            transactionError,
         } = await supabase
 
-          .from('suppliers')
+          .from('transactions')
 
           .insert([
             {
+
               user_id:
                 businessOwnerId,
 
-              name:
-                supplier_name,
+              customer_id:
+                customer.id,
 
-              mobile:
-                mobile || null,
+              type:
+                transactionType,
+
+              amount:
+                Number(amount),
+
+              description:
+                note ||
+                null,
+
             },
           ])
 
-          .select(
-            'id, user_id, name, mobile'
-          )
+          .select()
 
           .single();
 
 
-        if (error) {
-          throw error;
+        if (
+          transactionError
+        ) {
+
+          throw transactionError;
+
         }
 
 
-        supplier = data;
-
-
         console.log(
-          '🏪 New Supplier Created:',
-          supplier.id
+          '💰 Customer Transaction Created:',
+          transaction.id
         );
+
+
+        return res.json({
+
+          success: true,
+
+          message:
+            'Customer transaction created successfully',
+
+          transaction,
+
+          customer,
+
+        });
 
       }
 
 
-      // ======================================
-      // TRANSACTION TYPE
-      // ======================================
-
-      let transactionType;
-
+      // =================================================
+      // SUPPLIER
+      // =================================================
 
       if (
-        intent ===
-        'purchase_from_supplier'
+        account_type ===
+        'supplier'
       ) {
 
-        transactionType =
-          'purchase';
+        let supplier = null;
 
-      } else if (
-        intent ===
-        'payment_to_supplier'
-      ) {
 
-        transactionType =
-          'payment';
+        // ======================================
+        // FIND SUPPLIER BY ID
+        // ======================================
 
-      } else {
+        if (supplier_id) {
 
-        return res.status(400).json({
+          const {
+            data,
+            error,
+          } = await supabase
 
-          success: false,
+            .from('suppliers')
+
+            .select(
+              'id, user_id, name, mobile'
+            )
+
+            .eq(
+              'id',
+              supplier_id
+            )
+
+            .eq(
+              'user_id',
+              businessOwnerId
+            )
+
+            .single();
+
+
+          if (
+            error &&
+            error.code !==
+              'PGRST116'
+          ) {
+
+            throw error;
+
+          }
+
+
+          supplier =
+            data;
+
+        }
+
+
+        // ======================================
+        // FIND SUPPLIER BY NAME
+        // ======================================
+
+        if (
+          !supplier &&
+          supplier_name
+        ) {
+
+          const match =
+            await findSupplierByName(
+              businessOwnerId,
+              supplier_name
+            );
+
+
+          if (
+            match &&
+            match.supplier
+          ) {
+
+            supplier =
+              match.supplier;
+
+          } else if (
+            match &&
+            match.id
+          ) {
+
+            supplier =
+              match;
+
+          }
+
+        }
+
+
+        // ======================================
+        // CREATE SUPPLIER
+        // ======================================
+
+        if (!supplier) {
+
+          const {
+            data,
+            error,
+          } = await supabase
+
+            .from('suppliers')
+
+            .insert([
+              {
+
+                user_id:
+                  businessOwnerId,
+
+                name:
+                  supplier_name,
+
+                mobile:
+                  mobile ||
+                  null,
+
+              },
+            ])
+
+            .select(
+              'id, user_id, name, mobile'
+            )
+
+            .single();
+
+
+          if (error) {
+            throw error;
+          }
+
+
+          supplier =
+            data;
+
+
+          console.log(
+            '🏪 New Supplier Created:',
+            supplier.id
+          );
+
+        }
+
+
+        // ======================================
+        // TRANSACTION TYPE
+        // ======================================
+
+        let transactionType;
+
+
+        if (
+          intent ===
+          'purchase_from_supplier'
+        ) {
+
+          transactionType =
+            'purchase';
+
+        } else if (
+          intent ===
+          'payment_to_supplier'
+        ) {
+
+          transactionType =
+            'payment';
+
+        } else {
+
+          return res.status(400).json({
+
+            success: false,
+
+            message:
+              'Invalid supplier transaction intent',
+
+          });
+
+        }
+
+
+        // ======================================
+        // INSERT TRANSACTION
+        // ======================================
+
+        const {
+          data: transaction,
+          error:
+            transactionError,
+        } = await supabase
+
+          .from('transactions')
+
+          .insert([
+            {
+
+              user_id:
+                businessOwnerId,
+
+              supplier_id:
+                supplier.id,
+
+              type:
+                transactionType,
+
+              amount:
+                Number(amount),
+
+              description:
+                note ||
+                null,
+
+            },
+          ])
+
+          .select()
+
+          .single();
+
+
+        if (
+          transactionError
+        ) {
+
+          throw transactionError;
+
+        }
+
+
+        console.log(
+          '💰 Supplier Transaction Created:',
+          transaction.id
+        );
+
+
+        return res.json({
+
+          success: true,
 
           message:
-            'Invalid supplier transaction intent',
+            'Supplier transaction created successfully',
+
+          transaction,
+
+          supplier,
 
         });
 
@@ -1663,437 +2124,426 @@ router.post('/confirm', async (req, res) => {
 
 
       // ======================================
-      // INSERT TRANSACTION
+      // INVALID ACCOUNT
       // ======================================
 
-      const {
-        data: transaction,
-        error: transactionError,
-      } = await supabase
-
-        .from('transactions')
-
-        .insert([
-          {
-            user_id:
-              businessOwnerId,
-
-            supplier_id:
-              supplier.id,
-
-            type:
-              transactionType,
-
-            amount:
-              Number(amount),
-
-            description:
-              note || null,
-          },
-        ])
-
-        .select()
-
-        .single();
-
-
-      if (transactionError) {
-        throw transactionError;
-      }
-
-
-      console.log(
-        '💰 Supplier Transaction Created:',
-        transaction.id
-      );
-
-
-      return res.json({
-
-        success: true,
-
-        message:
-          'Supplier transaction created successfully',
-
-        transaction,
-
-        supplier,
-
-      });
-
-    }
-
-
-    return res.status(400).json({
-
-      success: false,
-
-      message:
-        'Invalid account type',
-
-    });
-
-  } catch (error) {
-
-    console.error(
-      '❌ Voice Confirm Error:',
-      error
-    );
-
-
-    if (error.statusCode === 403) {
-
-      return res.status(403).json({
+      return res.status(400).json({
 
         success: false,
 
         message:
-          'You do not have permission to use voice transactions',
+          'Invalid account type',
+
+      });
+
+
+    } catch (error) {
+
+      console.error(
+        '❌ Voice Confirm Error:',
+        error
+      );
+
+
+      if (
+        error.statusCode === 403
+      ) {
+
+        return res.status(403).json({
+
+          success: false,
+
+          message:
+            'You do not have permission to use voice transactions',
+
+        });
+
+      }
+
+
+      return res.status(500).json({
+
+        success: false,
+
+        message:
+          'Failed to confirm voice transaction',
+
+        error:
+          error.message,
 
       });
 
     }
 
-
-    return res.status(500).json({
-
-      success: false,
-
-      message:
-        'Failed to confirm voice transaction',
-
-      error:
-        error.message,
-
-    });
-
   }
-
-});
+);
 
 
 // =====================================================
 // POST /api/voice/clarify
 // =====================================================
 
-router.post('/clarify', async (req, res) => {
+router.post(
+  '/clarify',
+  async (req, res) => {
 
-  try {
+    try {
 
-    const {
-      user_id,
-      original_text,
-      question,
-      answer,
-    } = req.body;
-
-
-    if (!user_id) {
-
-      return res.status(400).json({
-
-        success: false,
-
-        message:
-          'user_id is required',
-
-      });
-
-    }
-
-
-    // ======================================
-    // VOICE PERMISSION
-    // ======================================
-
-    await requirePermission(
-      user_id,
-      'can_use_voice'
-    );
-
-
-    // ======================================
-    // REQUIRED FIELDS
-    // ======================================
-
-    if (
-      !original_text ||
-      !question ||
-      !answer
-    ) {
-
-      return res.status(400).json({
-
-        success: false,
-
-        message:
-          'original_text, question and answer are required',
-
-      });
-
-    }
-
-
-    const businessOwnerId =
-      await getBusinessOwnerId(user_id);
-
-
-    console.log('🎤 Voice Clarify');
-    console.log('User ID:', user_id);
-    console.log(
-      'Business Owner ID:',
-      businessOwnerId
-    );
-
-
-    // ======================================
-    // AI CLARIFICATION
-    // ======================================
-
-    const clarified =
-      await clarifyVoiceTransaction({
-
-        originalText:
-          original_text,
-
+      const {
+        user_id,
+        original_text,
         question,
-
         answer,
-
-      });
-
-
-    console.log(
-      '🤖 Clarified:',
-      clarified
-    );
+      } = req.body;
 
 
-    // ======================================
-    // MORE CLARIFICATION
-    // ======================================
+      // ======================================
+      // USER CHECK
+      // ======================================
 
-    if (
-      clarified.needs_clarification
-    ) {
+      if (!user_id) {
 
-      return res.json({
+        return res.status(400).json({
 
-        success: true,
+          success: false,
 
-        needs_clarification: true,
+          message:
+            'user_id is required',
 
-        question:
-          clarified.clarification_question,
+        });
 
-        transaction:
-          clarified,
-
-      });
-
-    }
+      }
 
 
-    // ======================================
-    // VALIDATION
-    // ======================================
+      // ======================================
+      // VOICE PERMISSION
+      // ======================================
 
-    if (
-      !clarified.account_type
-    ) {
-
-      return res.status(400).json({
-
-        success: false,
-
-        message:
-          'Account type could not be detected',
-
-      });
-
-    }
+      await requirePermission(
+        user_id,
+        'can_use_voice'
+      );
 
 
-    if (!clarified.intent) {
+      // ======================================
+      // REQUIRED FIELDS
+      // ======================================
 
-      return res.status(400).json({
+      if (
+        !original_text ||
+        !question ||
+        !answer
+      ) {
 
-        success: false,
+        return res.status(400).json({
 
-        message:
-          'Transaction intent could not be detected',
+          success: false,
 
-      });
+          message:
+            'original_text, question and answer are required',
 
-    }
+        });
 
-
-    if (!clarified.person_name) {
-
-      return res.status(400).json({
-
-        success: false,
-
-        message:
-          'Person name could not be detected',
-
-      });
-
-    }
+      }
 
 
-    if (
-      clarified.amount === null ||
-      clarified.amount === undefined ||
-      Number(clarified.amount) <= 0
-    ) {
+      // ======================================
+      // BUSINESS OWNER
+      // ======================================
 
-      return res.status(400).json({
-
-        success: false,
-
-        message:
-          'Valid amount could not be detected',
-
-      });
-
-    }
-
-
-    // ======================================
-    // SUPPLIER MATCH
-    // ======================================
-
-    if (
-      clarified.account_type ===
-      'supplier'
-    ) {
-
-      const match =
-        await findSupplierByName(
-          businessOwnerId,
-          clarified.person_name
+      const businessOwnerId =
+        await getBusinessOwnerId(
+          user_id
         );
 
 
       console.log(
-        '🏪 Supplier Match:',
-        match
+        '🎤 Voice Clarify'
+      );
+
+      console.log(
+        'User ID:',
+        user_id
+      );
+
+      console.log(
+        'Business Owner ID:',
+        businessOwnerId
       );
 
 
-      return res.json({
+      // ======================================
+      // AI CLARIFICATION
+      // ======================================
 
-        success: true,
+      const clarified =
+        await clarifyVoiceTransaction({
 
-        needs_clarification: false,
+          originalText:
+            original_text,
 
-        transaction: {
+          question:
+            question,
 
-          ...clarified,
+          answer:
+            answer,
 
-          user_id:
-            businessOwnerId,
-
-        },
-
-        match,
-
-      });
-
-    }
-
-
-    // ======================================
-    // CUSTOMER MATCH
-    // ======================================
-
-    if (
-      clarified.account_type ===
-      'customer'
-    ) {
-
-      const match =
-        await findCustomerByName(
-          businessOwnerId,
-          clarified.person_name
-        );
+        });
 
 
       console.log(
-        '👤 Customer Match:',
-        match
+        '🤖 Clarified:',
+        clarified
       );
 
 
-      return res.json({
+      // ======================================
+      // MORE CLARIFICATION
+      // ======================================
 
-        success: true,
+      if (
+        clarified.needs_clarification
+      ) {
 
-        needs_clarification: false,
+        return res.json({
 
-        transaction: {
+          success: true,
 
-          ...clarified,
+          needs_clarification:
+            true,
 
-          user_id:
+          question:
+            clarified.clarification_question,
+
+          transaction:
+            clarified,
+
+        });
+
+      }
+
+
+      // ======================================
+      // VALIDATION
+      // ======================================
+
+      if (
+        !clarified.account_type
+      ) {
+
+        return res.status(400).json({
+
+          success: false,
+
+          message:
+            'Account type could not be detected',
+
+        });
+
+      }
+
+
+      if (
+        !clarified.intent
+      ) {
+
+        return res.status(400).json({
+
+          success: false,
+
+          message:
+            'Transaction intent could not be detected',
+
+        });
+
+      }
+
+
+      if (
+        !clarified.person_name
+      ) {
+
+        return res.status(400).json({
+
+          success: false,
+
+          message:
+            'Person name could not be detected',
+
+        });
+
+      }
+
+
+      if (
+        clarified.amount ===
+          null ||
+        clarified.amount ===
+          undefined ||
+        Number(
+          clarified.amount
+        ) <= 0
+      ) {
+
+        return res.status(400).json({
+
+          success: false,
+
+          message:
+            'Valid amount could not be detected',
+
+        });
+
+      }
+
+
+      // ======================================
+      // SUPPLIER MATCH
+      // ======================================
+
+      if (
+        clarified.account_type ===
+        'supplier'
+      ) {
+
+        const match =
+          await findSupplierByName(
             businessOwnerId,
-
-        },
-
-        match,
-
-      });
-
-    }
+            clarified.person_name
+          );
 
 
-    return res.status(400).json({
-
-      success: false,
-
-      message:
-        'Invalid account type',
-
-    });
-
-  } catch (error) {
-
-    console.error(
-      '❌ Voice Clarify Error:',
-      error
-    );
+        console.log(
+          '🏪 Supplier Match:',
+          match
+        );
 
 
-    if (error.statusCode === 403) {
+        return res.json({
 
-      return res.status(403).json({
+          success: true,
+
+          needs_clarification:
+            false,
+
+          transaction: {
+
+            ...clarified,
+
+            user_id:
+              businessOwnerId,
+
+          },
+
+          match,
+
+        });
+
+      }
+
+
+      // ======================================
+      // CUSTOMER MATCH
+      // ======================================
+
+      if (
+        clarified.account_type ===
+        'customer'
+      ) {
+
+        const match =
+          await findCustomerByName(
+            businessOwnerId,
+            clarified.person_name
+          );
+
+
+        console.log(
+          '👤 Customer Match:',
+          match
+        );
+
+
+        return res.json({
+
+          success: true,
+
+          needs_clarification:
+            false,
+
+          transaction: {
+
+            ...clarified,
+
+            user_id:
+              businessOwnerId,
+
+          },
+
+          match,
+
+        });
+
+      }
+
+
+      // ======================================
+      // INVALID ACCOUNT
+      // ======================================
+
+      return res.status(400).json({
 
         success: false,
 
         message:
-          'You do not have permission to use voice',
+          'Invalid account type',
+
+      });
+
+    } catch (error) {
+
+      console.error(
+        '❌ Voice Clarify Error:',
+        error
+      );
+
+
+      if (
+        error.statusCode === 403
+      ) {
+
+        return res.status(403).json({
+
+          success: false,
+
+          message:
+            'You do not have permission to use voice',
+
+        });
+
+      }
+
+
+      return res.status(500).json({
+
+        success: false,
+
+        message:
+          'Failed to clarify voice transaction',
+
+        error:
+          error.message,
 
       });
 
     }
-
-
-    return res.status(500).json({
-
-      success: false,
-
-      message:
-        'Failed to clarify voice transaction',
-
-      error:
-        error.message,
-
-    });
 
   }
+);
 
-});
 
+// =====================================================
+// EXPORT
+// =====================================================
 
 module.exports = router;
