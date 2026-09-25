@@ -903,17 +903,46 @@ router.post(
       // LANGUAGE
       // ======================================
 
-      let sttLanguage = null;
+ let sttLanguage = null;
 
-      if (language) {
+if (language) {
+  const selectedLanguage =
+    String(language).toLowerCase();
 
-        sttLanguage =
-          String(language)
-            .split('-')[0]
-            .toLowerCase();
+  /*
+   * Hindi / Hinglish / Indian English
+   * can be mixed in the same sentence.
+   *
+   * Do NOT force Whisper to English
+   * because Hindi words like:
+   * "se", "ka", "maal", "baaki", "aaya"
+   * can get badly interpreted.
+   */
 
-      }
+  if (
+    selectedLanguage === 'hi-in' ||
+    selectedLanguage === 'hi'
+  ) {
+    sttLanguage = 'hi';
+  }
 
+  /*
+   * For en-IN, leave language empty.
+   * Whisper will auto-detect Hindi/Hinglish/English.
+   */
+  else if (
+    selectedLanguage === 'en-in' ||
+    selectedLanguage === 'en'
+  ) {
+    sttLanguage = null;
+  }
+
+  else {
+    sttLanguage =
+      selectedLanguage
+        .split('-')[0];
+  }
+}
 
       console.log(
         '🌐 STT Language:',
