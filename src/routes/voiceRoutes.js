@@ -762,6 +762,411 @@ const upload = multer({
 
 
 // =====================================================
+// NORMALIZE WHISPER TRANSCRIPT
+//
+// Converts Hindi / Urdu / other native-script
+// transcripts into Roman Hindi / Hinglish.
+//
+// Example:
+//
+// جگنیس نے دو سو کا مال باقی لے گیا
+//
+// becomes:
+//
+// Jignesh ne do sau ka maal baaki le gaya
+//
+// Existing customer/supplier names are provided
+// to improve name accuracy.
+// =====================================================
+
+async function normalizeVoiceTranscript(
+  text,
+  businessOwnerId
+) {
+
+  if (
+    !text ||
+    !text.trim()
+  ) {
+
+    return text;
+
+  }
+
+
+  try {
+
+    // ==============================================
+    // GET EXISTING CUSTOMER NAMES
+    // ==============================================
+
+    const {
+      data: customers,
+      error:
+        customerError,
+    } = await supabase
+
+      .from('customers')
+
+      .select('name')
+
+      .eq(
+        'user_id',
+        businessOwnerId
+      );
+
+
+    if (customerError) {
+
+      console.error(
+        '⚠️ Customer names fetch failed:',
+        customerError.message
+      );
+
+    }
+
+
+    // ==============================================
+    // GET EXISTING SUPPLIER NAMES
+    // ==============================================
+
+    const {
+      data: suppliers,
+      error:
+        supplierError,
+    } = await supabase
+
+      .from('suppliers')
+
+      .select('name')
+
+      .eq(
+        'user_id',
+        businessOwnerId
+      );
+
+
+    if (supplierError) {
+
+      console.error(
+        '⚠️ Supplier names fetch failed:',
+        supplierError.message
+      );
+
+    }
+
+
+    // ==============================================
+    // BUILD NAME LIST
+    // ==============================================
+
+    const customerNames =
+      Array.isArray(customers)
+        ? customers
+            .map(
+              item => item?.name
+            )
+            .filter(Boolean)
+        : [];
+
+
+    const supplierNames =
+      Array.isArray(suppliers)
+        ? suppliers
+            .map(
+              item => item?.name
+            )
+            .filter(Boolean)
+        : [];
+
+
+    // ==============================================
+    // LIMIT CONTEXT SIZE
+    //
+    // We don't need hundreds/thousands of names.
+    // Keep a reasonable list for the AI prompt.
+    // ==============================================
+
+    const uniqueCustomerNames =
+      [
+        ...new Set(
+          customerNames
+        ),
+      ]
+        .slice(0, 200);
+
+
+    const uniqueSupplierNames =
+      [
+        ...new Set(
+          supplierNames
+        ),
+      ]
+        .slice(0, 200);
+
+
+    console.log(
+      '🔤 Normalizing transcript...'
+    );
+
+    console.log(
+      '👤 Customer names available:',
+      uniqueCustomerNames.length
+    );
+
+    console.log(
+      '🏪 Supplier names available:',
+      uniqueSupplierNames.length
+    );
+
+
+    // ==============================================
+    // GROQ NORMALIZER
+    // ==============================================
+
+    const response =
+      await groq.chat.completions.create({
+
+        model:
+          'openai/gpt-oss-20b',
+
+        temperature:
+          0,
+
+        messages: [
+
+          {
+            role:
+              'system',
+
+            content: `
+You are a transcription normalizer for an Indian
+business accounting application called Voice Khata.
+
+Your job is ONLY to normalize the speech transcript
+into natural Roman Hindi / Hinglish.
+
+DO NOT change the meaning.
+
+DO NOT translate the complete sentence into English.
+
+DO NOT add information.
+
+DO NOT remove information.
+
+DO NOT change the transaction intent.
+
+DO NOT change the amount.
+
+DO NOT change names.
+
+--------------------------------------------------
+SCRIPT NORMALIZATION
+--------------------------------------------------
+
+If the transcript is written in:
+
+- Devanagari Hindi
+- Urdu / Arabic Hindi
+- Roman Hindi
+- Hinglish
+
+convert it into easy-to-read Roman Hindi / Hinglish.
+
+Example:
+
+جگنیس نے دو سو کا مال باقی لے گیا
+
+should become:
+
+Jignesh ne do sau ka maal baaki le gaya
+
+Another example:
+
+पारस से पचास हजार का माल बाकी आया
+
+should become:
+
+Paras se pachaas hazaar ka maal baaki aaya
+
+Another example:
+
+राहुल ने 500 रुपये दिए
+
+should become:
+
+Rahul ne 500 rupaye diye
+
+--------------------------------------------------
+NAME HANDLING
+--------------------------------------------------
+
+The following are existing names in this user's
+Voice Khata account.
+
+CUSTOMERS:
+${uniqueCustomerNames.join(', ') || 'None'}
+
+SUPPLIERS:
+${uniqueSupplierNames.join(', ') || 'None'}
+
+If a spoken/transcribed name appears similar to
+one of these names, preserve the existing database
+name exactly.
+
+For example, if the database contains:
+
+Jignesh
+
+and Whisper gives:
+
+جگنیس
+
+normalize it to:
+
+Jignesh
+
+If the database contains:
+
+Paras Traders
+
+and Whisper gives a similar native-script version,
+use:
+
+Paras Traders
+
+Do NOT invent a new name when an existing name
+matches.
+
+--------------------------------------------------
+IMPORTANT WORDS
+--------------------------------------------------
+
+Preserve common Indian business words such as:
+
+se
+ne
+ko
+ka
+ke
+ki
+maal
+baaki
+udhaar
+aaya
+gaya
+liya
+diya
+lena
+dena
+rupaye
+rupees
+hazaar
+lakh
+jama
+payment
+receive
+credit
+balance
+
+--------------------------------------------------
+NUMBERS
+--------------------------------------------------
+
+Preserve amounts accurately.
+
+Examples:
+
+दो सौ
+→ do sau
+
+पाँच हजार
+→ paanch hazaar
+
+पचास हजार
+→ pachaas hazaar
+
+एक लाख
+→ ek lakh
+
+Do NOT change 50000 into another amount.
+
+--------------------------------------------------
+OUTPUT
+--------------------------------------------------
+
+Return ONLY the normalized transcript.
+
+No JSON.
+
+No explanation.
+
+No quotes.
+
+No markdown.
+
+No labels.
+`,
+          },
+
+          {
+            role:
+              'user',
+
+            content:
+              text,
+          },
+
+        ],
+
+      });
+
+
+    const normalized =
+      response
+        ?.choices?.[0]
+        ?.message
+        ?.content
+        ?.trim();
+
+
+    if (!normalized) {
+
+      console.log(
+        '⚠️ Normalizer returned empty text.'
+      );
+
+      return text;
+
+    }
+
+
+    return normalized;
+
+  } catch (error) {
+
+    console.error(
+      '⚠️ Transcript normalization failed:',
+      error?.message ||
+        error
+    );
+
+    // ==========================================
+    // IMPORTANT:
+    // Never break voice processing because
+    // normalization failed.
+    //
+    // Fall back to original Whisper transcript.
+    // ==========================================
+
+    return text;
+
+  }
+
+}
+
+
+// =====================================================
 // POST /api/voice/transcribe
 // =====================================================
 
@@ -785,12 +1190,15 @@ router.post(
       // ======================================
 
       console.log('');
+
       console.log(
         '===================================='
       );
+
       console.log(
         '🎤 VOICE TRANSCRIPTION'
       );
+
       console.log(
         '===================================='
       );
@@ -813,9 +1221,12 @@ router.post(
       if (!user_id) {
 
         return res.status(400).json({
+
           success: false,
+
           message:
             'user_id is required',
+
         });
 
       }
@@ -838,9 +1249,12 @@ router.post(
       if (!req.file) {
 
         return res.status(400).json({
+
           success: false,
+
           message:
             'Audio file is required',
+
         });
 
       }
@@ -891,58 +1305,105 @@ router.post(
       ) {
 
         return res.status(500).json({
+
           success: false,
+
           message:
             'Uploaded audio file was not found',
+
         });
 
       }
 
 
       // ======================================
+      // BUSINESS OWNER
+      //
+      // Needed for customer/supplier names
+      // during transcript normalization.
+      // ======================================
+
+      const businessOwnerId =
+        await getBusinessOwnerId(
+          user_id
+        );
+
+
+      console.log(
+        '🏢 Business Owner ID:',
+        businessOwnerId
+      );
+
+
+      // ======================================
       // LANGUAGE
       // ======================================
 
- let sttLanguage = null;
+      let sttLanguage = null;
 
-if (language) {
-  const selectedLanguage =
-    String(language).toLowerCase();
+      if (language) {
 
-  /*
-   * Hindi / Hinglish / Indian English
-   * can be mixed in the same sentence.
-   *
-   * Do NOT force Whisper to English
-   * because Hindi words like:
-   * "se", "ka", "maal", "baaki", "aaya"
-   * can get badly interpreted.
-   */
+        const selectedLanguage =
+          String(
+            language
+          ).toLowerCase();
 
-  if (
-    selectedLanguage === 'hi-in' ||
-    selectedLanguage === 'hi'
-  ) {
-    sttLanguage = 'hi';
-  }
 
-  /*
-   * For en-IN, leave language empty.
-   * Whisper will auto-detect Hindi/Hinglish/English.
-   */
-  else if (
-    selectedLanguage === 'en-in' ||
-    selectedLanguage === 'en'
-  ) {
-    sttLanguage = null;
-  }
+        /*
+         * Hindi:
+         * Explicitly tell Whisper Hindi.
+         */
 
-  else {
-    sttLanguage =
-      selectedLanguage
-        .split('-')[0];
-  }
-}
+        if (
+          selectedLanguage ===
+            'hi-in' ||
+          selectedLanguage ===
+            'hi'
+        ) {
+
+          sttLanguage =
+            'hi';
+
+        }
+
+
+        /*
+         * English / Indian English:
+         *
+         * IMPORTANT:
+         * Do NOT force English.
+         *
+         * This allows mixed Hindi/Hinglish/English.
+         */
+
+        else if (
+          selectedLanguage ===
+            'en-in' ||
+          selectedLanguage ===
+            'en'
+        ) {
+
+          sttLanguage =
+            null;
+
+        }
+
+
+        /*
+         * Other languages:
+         * Use their base language.
+         */
+
+        else {
+
+          sttLanguage =
+            selectedLanguage
+              .split('-')[0];
+
+        }
+
+      }
+
 
       console.log(
         '🌐 STT Language:',
@@ -965,10 +1426,9 @@ if (language) {
 
           /*
            * IMPORTANT:
-           * Because Multer now preserves
-           * the .m4a extension, Groq can
-           * correctly identify the format.
+           * Multer preserves the .m4a extension.
            */
+
           file:
             fs.createReadStream(
               filePath
@@ -987,9 +1447,11 @@ if (language) {
               }
             : {}),
 
-          temperature: 0,
+          temperature:
+            0,
 
           prompt:
+
             'Indian business transaction voice input. ' +
 
             'Understand Hindi, Hinglish, Roman Hindi, ' +
@@ -997,6 +1459,11 @@ if (language) {
             'Kannada, Malayalam and Indian English. ' +
 
             'Users may speak in mixed Hindi and English. ' +
+
+            'Do not translate spoken Hindi into English. ' +
+
+            'Preserve the spoken words and meaning as closely ' +
+            'as possible. ' +
 
             'Preserve customer names, supplier names, ' +
             'shop names and business names accurately. ' +
@@ -1015,20 +1482,22 @@ if (language) {
 
 
       // ======================================
-      // GET TEXT
+      // RAW WHISPER TEXT
       // ======================================
 
-      const text =
+      const rawText =
         transcription?.text
           ?.trim() || '';
 
 
+      console.log('');
+
       console.log(
-        '📝 TRANSCRIBED TEXT:'
+        '📝 RAW WHISPER TRANSCRIPT:'
       );
 
       console.log(
-        text
+        rawText
       );
 
 
@@ -1036,15 +1505,40 @@ if (language) {
       // EMPTY TRANSCRIPTION
       // ======================================
 
-      if (!text) {
+      if (!rawText) {
 
         return res.status(400).json({
+
           success: false,
+
           message:
             'Could not understand the audio',
+
         });
 
       }
+
+
+      // ======================================
+      // NORMALIZE TRANSCRIPT
+      // ======================================
+
+      const text =
+        await normalizeVoiceTranscript(
+          rawText,
+          businessOwnerId
+        );
+
+
+      console.log('');
+
+      console.log(
+        '🔤 NORMALIZED TRANSCRIPT:'
+      );
+
+      console.log(
+        text
+      );
 
 
       // ======================================
@@ -1059,6 +1553,9 @@ if (language) {
 
         language:
           sttLanguage || null,
+
+        raw_text:
+          rawText,
 
       });
 
